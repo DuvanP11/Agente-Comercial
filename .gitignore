@@ -1,0 +1,11 @@
+node_modules/
+.next/
+out/
+.env
+.env.*
+!.env.example
+.pglite/
+*.tsbuildinfo
+next-env.d.ts
+.DS_Store
+coverage/

@@ -1,0 +1,18 @@
+# Seguridad y privacidad
+
+## Implementado
+- Acceso por contraseña compartida con cookie HttpOnly firmada (HMAC-SHA256), comparación en tiempo constante; fail-closed en producción.
+- Validación con Zod en criterios de búsqueda y temas; consultas parametrizadas (Drizzle).
+- Subidas: solo `.csv`/`.xlsx`, máx. 5 MB y 20.000 filas; `exceljs` en lugar de `xlsx` (vulnerable).
+- Secretos solo en variables de servidor; ninguna `NEXT_PUBLIC_*`.
+- `audit_log` para importaciones, ingestas y decisiones de duplicados.
+
+## NO implementado (obligatorio antes de usar con datos reales en producción)
+- Usuarios individuales, roles y aislamiento por organización (hoy: una contraseña compartida y una org).
+- Límite de intentos de login y de peticiones.
+- Cifrado de tokens de integraciones (aún no existen).
+- Procedimiento de eliminación/exportación de datos personales y registro de "no contactar".
+- Política de tratamiento de datos conforme a la **Ley 1581 de 2012**: requiere revisión legal; el texto no está redactado.
+- Cabeceras de seguridad (CSP) y copias de seguridad.
+
+Que un dato sea público no implica que pueda usarse sin restricciones. No se hace envío masivo; WhatsApp solo abre el chat para que la persona decida.
