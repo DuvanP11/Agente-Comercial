@@ -1,5 +1,5 @@
 import { and, eq, isNull } from "drizzle-orm";
-import { findDuplicates, type CompanyRecord, DUPLICATE_MESSAGES } from "../dedup/match";
+import { findDuplicates, type CompanyRecord, duplicateMessage } from "../dedup/match";
 import { normalizeDomain, normalizeEmail, normalizeName, normalizePhone } from "../dedup/normalize";
 import type { Db } from "../db/client";
 import { auditLog, clients, duplicateReviews, evidence, prospects } from "../db/schema";
@@ -82,7 +82,7 @@ export async function ingestProspects(db: Db, orgId: string, raws: RawProspect[]
     }
     outcomes.push({
       prospectId: row.id, name: raw.name, status,
-      message: top ? DUPLICATE_MESSAGES[top.level] : undefined,
+      message: top ? duplicateMessage(top.level, refs.find((r) => r.id === top.reference.id)!.refType) : undefined,
       matchedWith: top ? { type: refs.find((r) => r.id === top.reference.id)!.refType, id: top.reference.id, name: top.reference.name } : undefined,
       reasons: top?.reasons,
     });

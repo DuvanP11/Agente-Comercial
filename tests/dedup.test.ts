@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { findDuplicates, type CompanyRecord } from "@/lib/dedup/match";
+import { duplicateMessage, findDuplicates, type CompanyRecord } from "@/lib/dedup/match";
 import { normalizeDomain, normalizeName, normalizeNit, normalizePhone } from "@/lib/dedup/normalize";
 
 const ref = (o: Partial<CompanyRecord> & { id: string }): CompanyRecord =>
@@ -64,5 +64,23 @@ describe("deduplicación", () => {
   });
   it("no se compara contra sí mismo", () => {
     expect(findDuplicates(cand({ id: "1", website: "a.com" }), [ref({ id: "1", website: "a.com" })])).toHaveLength(0);
+  });
+
+  it("nombres genéricos de una palabra no se marcan como duplicados (son categorías, no negocios)", () => {
+    const m = findDuplicates(cand({ name: "Droguería", city: "Bogotá", address: "Carrera 28" }), [ref({ id: "1", name: "Drogueria", city: "Bogotá", address: "Calle 2" })]);
+    expect(m).toHaveLength(0);
+  });
+  it("misma calle sin número de puerta NO es duplicado exacto", () => {
+    const m = findDuplicates(cand({ name: "Ferretería Central", city: "Bogotá", address: "Carrera 7" }), [ref({ id: "1", name: "Ferretería Central", city: "Bogotá", address: "Carrera 7" })]);
+    expect(m.every((x) => x.level !== "exact")).toBe(true);
+  });
+  it("mismo nombre + misma dirección con número de puerta SÍ es exacto", () => {
+    const m = findDuplicates(cand({ name: "Ferretería Central", address: "Cra 7 # 10-20" }), [ref({ id: "1", name: "Ferretería Central SAS", address: "Carrera 7 No. 10-20" })]);
+    expect(m[0]?.level).toBe("exact");
+  });
+  it("mensaje según con qué coincide: cliente vs prospecto", () => {
+    expect(duplicateMessage("exact", "client")).toMatch(/cliente ya está registrado/);
+    expect(duplicateMessage("exact", "prospect")).toMatch(/prospecto ya existe/);
+    expect(duplicateMessage("probable", "client")).toMatch(/Posible duplicado/);
   });
 });

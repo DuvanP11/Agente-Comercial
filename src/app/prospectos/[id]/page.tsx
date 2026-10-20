@@ -3,6 +3,7 @@ import { desc, eq } from "drizzle-orm";
 import { getDb } from "@/lib/db/client";
 import { activities, clients, duplicateReviews, evidence, prospects } from "@/lib/db/schema";
 import { findContradictions } from "@/lib/evidence/types";
+import { duplicateMessage } from "@/lib/dedup/match";
 import { mapSearchLink } from "@/lib/contact-links";
 import { CRITERION_LABELS, type ScoreResult } from "@/lib/scoring/score";
 import { Composer } from "./Composer";
@@ -41,7 +42,7 @@ export default async function Ficha({ params }: { params: Promise<{ id: string }
       {revs.map((r) => (
         <section key={r.id} className="card space-y-2" aria-label="Duplicado">
           <p className={`font-semibold ${r.level === "exact" ? "badge-bad" : "badge-warn"}`}>
-            {r.level === "exact" ? "Este cliente ya está registrado en PIBOX. Se excluye de los nuevos prospectos para evitar duplicados." : "Posible duplicado detectado. Revisa ambos registros antes de decidir."}
+            {duplicateMessage(r.level as "exact" | "probable", r.referenceType as "client" | "prospect")}
           </p>
           <p className="text-sm">Coincide con {r.referenceType === "client" ? "cliente" : "prospecto"} <b>{refNames.get(r.id)}</b>. Campos: {(r.reasons as { field: string; candidateValue: string; referenceValue: string }[]).map((x) => `${x.field} (${x.candidateValue} ↔ ${x.referenceValue})`).join("; ")}.</p>
           <p className="text-xs text-muted">Decisión: {r.decision}{r.decidedBy ? ` por ${r.decidedBy}` : ""}</p>
