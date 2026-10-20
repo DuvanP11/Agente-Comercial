@@ -30,19 +30,25 @@ export async function runSearch(_: SearchState, fd: FormData): Promise<SearchSta
     return { status: "error", message: st.state === "not_configured" ? `${connector.label} no está configurada (falta ${st.missing.join(", ")}). ${st.howTo}` : st.message };
   }
 
-  const db = await getDb();
-  const org = await ensureDefaultOrg(db);
-  const [s] = await db.insert(searches).values({
-    orgId: org, naturalLanguage: String(fd.get("brief") ?? "") || null, criteria: parsed.data, connector: connector.id, status: "running",
-  }).returning();
+  let searchId: string | undefined;
   try {
+    const db = await getDb();
+    const org = await ensureDefaultOrg(db);
+    const [s] = await db.insert(searches).values({
+      orgId: org, naturalLanguage: String(fd.get("brief") ?? "") || null, criteria: parsed.data, connector: connector.id, status: "running",
+    }).returning();
+    searchId = s.id;
     const result = await connector.search(parsed.data);
     const outcomes = await ingestProspects(db, org, result.prospects, s.id);
     await db.update(searches).set({ status: "completed", resultCount: outcomes.length, finishedAt: new Date(), error: result.errors.join(" | ") || null }).where(eq(searches.id, s.id));
     return { status: "ok", outcomes, errors: result.errors, message: `${result.prospects.length} resultados de ${connector.label}; ${outcomes.length} nuevos registros guardados.${connector.id === "openstreetmap" ? " Datos © colaboradores de OpenStreetMap (ODbL)." : ""}` };
   } catch (e) {
-    const msg = e instanceof Error ? e.message : String(e);
-    await db.update(searches).set({ status: "failed", error: msg, finishedAt: new Date() }).where(eq(searches.id, s.id));
+    // Nunca dejar que una excepción llegue como "Application error": se muestra la causa (sin cadenas de conexión).
+    const msg = (e instanceof Error ? e.message : String(e)).replace(/postgres(ql)?:\/\/\S+/gi, "[conexión oculta]").slice(0, 400);
+    console.error("runSearch falló:", e);
+    if (searchId) {
+      try { const db = await getDb(); await db.update(searches).set({ status: "failed", error: msg, finishedAt: new Date() }).where(eq(searches.id, searchId)); } catch { /* ya se informa abajo */ }
+    }
     return { status: "error", message: `La búsqueda falló: ${msg}` };
   }
 }
