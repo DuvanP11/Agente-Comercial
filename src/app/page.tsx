@@ -19,6 +19,9 @@ export default async function Dashboard() {
   const org = await ensureDefaultOrg(db);
   const n = async (q: Promise<{ c: number }[]>) => (await q)[0]?.c ?? 0;
 
+  const stageCount = (to: string) => n(db.select({ c: sql<number>`count(distinct ${activities.prospectId})`.mapWith(Number) }).from(activities)
+    .where(and(eq(activities.orgId, org), eq(activities.type, "campaign_status"), sql`${activities.detail}->>'to' = ${to}`)));
+  const [replied, meetings, proposals, won] = await Promise.all([stageCount("replied"), stageCount("meeting"), stageCount("proposal"), stageCount("won")]);
   const [clientCount, total, qualified, excluded, review, contacts, failedSearches, withPhone, withEmail, demo] = await Promise.all([
     n(db.select({ c: count() }).from(clients).where(and(eq(clients.orgId, org), isNull(clients.archivedAt)))),
     n(db.select({ c: count() }).from(prospects).where(eq(prospects.orgId, org))),
@@ -52,9 +55,11 @@ export default async function Dashboard() {
       </section>
       <section aria-label="Comercial" className="grid grid-cols-2 gap-3 lg:grid-cols-4">
         <Kpi label="Conversaciones abiertas por WhatsApp" value={contacts} note="Se abrió el chat; no implica que se haya enviado" />
-        <Kpi label="Respuestas / reuniones / propuestas" value="No disponible" note="Aún no se registran (fase 6)" />
+        <Kpi label="Respondieron" value={replied} note="Prospectos distintos que pasaron a “Respondió” en campañas" />
+        <Kpi label="Reuniones agendadas" value={meetings} note="Desde campañas" />
+        <Kpi label="Propuestas enviadas" value={proposals} note="Desde campañas" />
+        <Kpi label="Clientes ganados" value={won} note="Desde campañas" />
         <Kpi label="Ingresos, costos y margen" value="No disponible" note="Requiere carga de datos financieros (fase 9)" />
-        <Kpi label="Metas" value="No disponible" note="Módulo de metas pendiente (fase 9)" />
       </section>
     </div>
   );

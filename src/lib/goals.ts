@@ -5,9 +5,9 @@ export const GOAL_METRICS = {
   leads: { label: "Prospectos nuevos (sin duplicados ni demo)", hasSource: true },
   qualified: { label: "Prospectos calificados", hasSource: true },
   contacts: { label: "Contactos iniciados (WhatsApp abierto / correo enviado)", hasSource: true },
-  meetings: { label: "Reuniones agendadas", hasSource: false },
-  proposals: { label: "Propuestas enviadas", hasSource: false },
-  new_clients: { label: "Clientes nuevos", hasSource: false },
+  meetings: { label: "Reuniones agendadas (desde campañas)", hasSource: true },
+  proposals: { label: "Propuestas enviadas (desde campañas)", hasSource: true },
+  new_clients: { label: "Clientes nuevos (ganados en campañas)", hasSource: true },
   revenue: { label: "Facturación", hasSource: false },
   margin: { label: "Margen", hasSource: false },
 } as const;

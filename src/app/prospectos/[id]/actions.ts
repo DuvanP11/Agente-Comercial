@@ -18,6 +18,7 @@ export async function openWhatsApp(prospectId: string, body: string): Promise<{ 
   const org = await ensureDefaultOrg(db);
   const [p] = await db.select().from(prospects).where(eq(prospects.id, prospectId));
   if (!p || !p.phoneKey) return { error: "El prospecto no tiene un teléfono con formato válido." };
+  if (p.doNotContact) return { error: "Este prospecto pidió no ser contactado." };
   const url = whatsappLink(p.phoneKey, body);
   if (!url) return { error: "Número inválido para WhatsApp." };
   if (!body.trim()) return { error: "El mensaje está vacío." };

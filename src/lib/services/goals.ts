@@ -34,6 +34,13 @@ export async function actualFor(db: Db, orgId: string, metric: GoalMetric, from:
       eq(auditLog.orgId, orgId), eq(auditLog.action, "prospect.qualified"),
       gte(auditLog.createdAt, from), lte(auditLog.createdAt, to))));
   }
+  const stage = ({ meetings: "meeting", proposals: "proposal", new_clients: "won" } as Partial<Record<GoalMetric, string>>)[metric];
+  if (stage) {
+    // Prospectos distintos que llegaron a esa etapa en el periodo (el historial vive en activities).
+    return n(db.select({ c: sql<number>`count(distinct ${activities.prospectId})`.mapWith(Number) }).from(activities).where(and(
+      eq(activities.orgId, orgId), eq(activities.type, "campaign_status"), sql`${activities.detail}->>'to' = ${stage}`,
+      gte(activities.createdAt, from), lte(activities.createdAt, to))));
+  }
   return n(db.select({ c: sql<number>`count(distinct ${activities.prospectId})`.mapWith(Number) }).from(activities).where(and(
     eq(activities.orgId, orgId), sql`${activities.type} in ('whatsapp_opened','email_sent')`,
     gte(activities.createdAt, from), lte(activities.createdAt, to))));

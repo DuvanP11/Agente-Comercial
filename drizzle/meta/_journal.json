@@ -15,6 +15,13 @@
       "when": 1792518477699,
       "tag": "0001_sloppy_peter_parker",
       "breakpoints": true
+    },
+    {
+      "idx": 2,
+      "version": "7",
+      "when": 1792518872120,
+      "tag": "0002_chilly_victor_mancha",
+      "breakpoints": true
     }
   ]
 }

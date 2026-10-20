@@ -46,6 +46,8 @@ export default async function Ficha({ params, searchParams }: { params: Promise<
         <p className="text-sm text-muted">{p.category} · {p.city} · fuente {p.sourceName} · consultado {p.consultedAt.toLocaleDateString("es-CO")}</p>
       </header>
 
+      {p.doNotContact && <p role="alert" className="card badge-bad font-semibold">NO CONTACTAR: {p.doNotContactReason}. Está bloqueado en campañas y WhatsApp.</p>}
+
       {revs.map((r) => (
         <section key={r.id} className="card space-y-2" aria-label="Duplicado">
           <p className={`font-semibold ${r.level === "exact" ? "badge-bad" : "badge-warn"}`}>
@@ -102,7 +104,7 @@ export default async function Ficha({ params, searchParams }: { params: Promise<
       </section>
 
       <section className="card" aria-label="Contacto"><h2 className="mb-2 font-semibold">Contacto por WhatsApp</h2>
-        <Composer prospectId={id} initial={draft} canWhatsApp={!!p.phoneKey && p.status !== "excluded_duplicate"} />
+        <Composer prospectId={id} initial={draft} canWhatsApp={!!p.phoneKey && p.status !== "excluded_duplicate" && !p.doNotContact} />
       </section>
 
       <section className="card" aria-label="Actividad"><h2 className="mb-1 font-semibold">Historial</h2>

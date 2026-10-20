@@ -12,7 +12,7 @@ export const NAV: NavItem[] = [
   { slug: "captar", label: "Captar clientes", href: "/m/captar", status: "pending", phase: "6" },
   { slug: "prospectos", label: "Base de prospectos", href: "/prospectos", status: "ready", phase: "3" },
   { slug: "clientes", label: "Clientes existentes", href: "/clientes", status: "ready", phase: "3" },
-  { slug: "campanas", label: "Campañas comerciales", href: "/m/campanas", status: "pending", phase: "6" },
+  { slug: "campanas", label: "Campañas comerciales", href: "/campanas", status: "partial", phase: "6", note: "Mensajes por plantilla con aprobación, seguimientos y no-contactar. Redacción con IA y correo: pendientes." },
   { slug: "metas", label: "Metas y rendimiento", href: "/metas", status: "partial", phase: "9", note: "Metas editables; avance real solo para prospectos, calificados y contactos." },
   { slug: "mercado", label: "Inteligencia de mercado", href: "/m/mercado", status: "pending", phase: "5" },
   { slug: "agentes", label: "Agentes y skills", href: "/m/agentes", status: "pending", phase: "4" },

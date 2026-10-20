@@ -65,6 +65,10 @@ export const prospects = pgTable("prospects", {
   phoneKey: text("phone_key").notNull().default(""),
   emailKey: text("email_key").notNull().default(""),
   scoreJson: jsonb("score_json"),              // ScoreResult reproducible
+  /** Quien pidió no recibir comunicaciones: bloquea campañas y WhatsApp (Ley 1581 de 2012). */
+  doNotContact: boolean("do_not_contact").notNull().default(false),
+  doNotContactReason: text("do_not_contact_reason"),
+  doNotContactAt: timestamp("do_not_contact_at", { withTimezone: true }),
   consultedAt: timestamp("consulted_at", { withTimezone: true }).notNull(),
   createdAt: ts("created_at"),
 }, (t) => [
@@ -136,6 +140,7 @@ export const messages = pgTable("messages", {
   id: id(),
   orgId: text("org_id").notNull().references(() => organizations.id),
   prospectId: text("prospect_id").notNull(),
+  campaignId: text("campaign_id"),
   channel: text("channel").notNull(),       // whatsapp | email
   subject: text("subject"),
   body: text("body").notNull(),
@@ -177,3 +182,31 @@ export const auditLog = pgTable("audit_log", {
   detail: jsonb("detail"),
   createdAt: ts("created_at"),
 });
+
+
+export const campaigns = pgTable("campaigns", {
+  id: id(),
+  orgId: text("org_id").notNull().references(() => organizations.id),
+  name: text("name").notNull(),
+  objective: text("objective"),
+  valueProposition: text("value_proposition"),
+  channel: text("channel").notNull().default("whatsapp"),
+  /** Plantilla con {empresa}, {ciudad}, {categoria}. */
+  template: text("template").notNull(),
+  /** active | closed */
+  status: text("status").notNull().default("active"),
+  createdAt: ts("created_at"),
+});
+
+export const campaignProspects = pgTable("campaign_prospects", {
+  id: id(),
+  orgId: text("org_id").notNull().references(() => organizations.id),
+  campaignId: text("campaign_id").notNull().references(() => campaigns.id),
+  prospectId: text("prospect_id").notNull().references(() => prospects.id),
+  /** pending | contacted | replied | meeting | proposal | won | lost | not_interested | do_not_contact */
+  status: text("status").notNull().default("pending"),
+  nextFollowUpAt: timestamp("next_follow_up_at", { withTimezone: true }),
+  lastContactAt: timestamp("last_contact_at", { withTimezone: true }),
+  notes: text("notes"),
+  createdAt: ts("created_at"),
+}, (t) => [uniqueIndex("campaign_prospect_uq").on(t.campaignId, t.prospectId), index("cp_org_idx").on(t.orgId)]);
