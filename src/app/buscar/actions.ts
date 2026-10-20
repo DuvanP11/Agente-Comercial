@@ -40,8 +40,10 @@ export async function runSearch(_: SearchState, fd: FormData): Promise<SearchSta
     searchId = s.id;
     const result = await connector.search(parsed.data);
     const outcomes = await ingestProspects(db, org, result.prospects, s.id);
-    await db.update(searches).set({ status: "completed", resultCount: outcomes.length, finishedAt: new Date(), error: result.errors.join(" | ") || null }).where(eq(searches.id, s.id));
-    return { status: "ok", outcomes, errors: result.errors, message: `${result.prospects.length} resultados de ${connector.label}; ${outcomes.length} nuevos registros guardados.${connector.id === "openstreetmap" ? " Datos © colaboradores de OpenStreetMap (ODbL)." : ""}` };
+    const stored = outcomes.filter((o) => o.status !== "already_stored").length;
+    const already = outcomes.length - stored;
+    await db.update(searches).set({ status: "completed", resultCount: stored, finishedAt: new Date(), error: result.errors.join(" | ") || null }).where(eq(searches.id, s.id));
+    return { status: "ok", outcomes, errors: result.errors, message: `${result.prospects.length} resultados de ${connector.label}: ${stored} nuevos guardados${already ? `, ${already} ya estaban guardados de antes` : ""}.${connector.id === "openstreetmap" ? " Datos © colaboradores de OpenStreetMap (ODbL)." : ""}` };
   } catch (e) {
     // Nunca dejar que una excepción llegue como "Application error": se muestra la causa (sin cadenas de conexión).
     const msg = (e instanceof Error ? e.message : String(e)).replace(/postgres(ql)?:\/\/\S+/gi, "[conexión oculta]").slice(0, 400);

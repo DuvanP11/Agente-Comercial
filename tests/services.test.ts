@@ -60,7 +60,10 @@ describe("ingesta con deduplicación", () => {
   });
   it("el mismo id de fuente no se guarda dos veces", async () => {
     const again = await ingestProspects(db, org, [raw({ name: "Tienda Zeta", sourceId: "p3" })]);
-    expect(again).toHaveLength(0);
+    expect(again).toHaveLength(1); // se informa, no se oculta
+    expect(again[0].status).toBe("already_stored");
+    expect(again[0].message).toMatch(/Ya estaba guardado/);
+    expect((await db.select().from(prospects).where(eq(prospects.name, "Tienda Zeta")))).toHaveLength(1); // y no se duplicó
   });
   it("detecta duplicados entre prospectos de la misma búsqueda", async () => {
     const out = await ingestProspects(db, org, [raw({ name: "Eco Pack", phone: "3201112222", sourceId: "p4" }), raw({ name: "Ecopack Colombia", phone: "+57 320 111 2222", sourceId: "p5" })]);

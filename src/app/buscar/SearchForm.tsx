@@ -2,8 +2,8 @@
 import { useActionState, useState } from "react";
 import { runSearch, type SearchState } from "./actions";
 
-const BADGE = { new: "badge-ok", excluded_duplicate: "badge-bad", needs_review: "badge-warn" } as const;
-const LABEL = { new: "Nuevo", excluded_duplicate: "Excluido (duplicado)", needs_review: "Revisar duplicado" } as const;
+const BADGE = { new: "badge-ok", excluded_duplicate: "badge-bad", needs_review: "badge-warn", already_stored: "" } as const;
+const LABEL = { new: "Nuevo", excluded_duplicate: "Excluido (duplicado)", needs_review: "Revisar duplicado", already_stored: "Ya guardado" } as const;
 
 interface Source { id: string; label: string; ready: boolean; howTo?: string }
 

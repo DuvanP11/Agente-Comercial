@@ -8,7 +8,7 @@ import type { RawProspect } from "../connectors/types";
 export interface IngestOutcome {
   prospectId: string;
   name: string;
-  status: "new" | "excluded_duplicate" | "needs_review";
+  status: "new" | "excluded_duplicate" | "needs_review" | "already_stored";
   message?: string;
   matchedWith?: { type: "client" | "prospect"; id: string; name: string };
   reasons?: unknown;
@@ -52,7 +52,14 @@ export async function ingestProspects(db: Db, orgId: string, raws: RawProspect[]
       nameKey: normalizeName(raw.name), domainKey: normalizeDomain(raw.website),
       phoneKey: normalizePhone(raw.phone), emailKey: normalizeEmail(raw.email),
     }).onConflictDoNothing().returning();
-    if (!row) continue; // mismo place_id ya guardado antes: no se duplica
+    if (!row) {
+      // Mismo id de fuente ya guardado antes: no se duplica, pero se informa para que el usuario lo vea.
+      const [existing] = raw.sourceId
+        ? await db.select().from(prospects).where(and(eq(prospects.orgId, orgId), eq(prospects.sourceName, raw.sourceName), eq(prospects.sourceId, raw.sourceId))).limit(1)
+        : [];
+      if (existing) outcomes.push({ prospectId: existing.id, name: existing.name, status: "already_stored", message: "Ya estaba guardado de una búsqueda anterior; no se duplicó." });
+      continue;
+    }
 
     // Evidencia por cada dato que el conector sí entregó. "Observado en la fuente", no "verificado".
     const ref = raw.sourceUrl ?? `${raw.sourceName}:${raw.sourceId ?? ""}`;
