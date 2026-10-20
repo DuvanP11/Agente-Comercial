@@ -6,35 +6,35 @@ const OVERPASS_DEFAULT = "https://overpass-api.de/api/interpreter";
 const USER_AGENT = "pibox-commercial-intelligence/0.1 (hneira@picap.co)";
 /** Cada llamada externa tiene tope; la búsqueda completa también, para que Vercel nunca mate la función en silencio. */
 const REQUEST_TIMEOUT_MS = 18_000;
-const SEARCH_BUDGET_MS = 40_000; // deja margen para el respaldo y para guardar, dentro de maxDuration = 60
+const SEARCH_BUDGET_MS = 20_000; // Overpass falla a menudo y el respaldo es bueno: no vale la pena esperar más; deja margen dentro de maxDuration = 60
 const withTimeout = (signal?: AbortSignal) => (signal ? AbortSignal.any([signal, AbortSignal.timeout(REQUEST_TIMEOUT_MS)]) : AbortSignal.timeout(REQUEST_TIMEOUT_MS));
 const ATTRIBUTION = "Datos © colaboradores de OpenStreetMap (licencia ODbL). Completitud variable: pocos negocios traen teléfono o web.";
 
-/** Categoría en español → filtros de etiquetas OSM. Lo que no esté aquí se busca por nombre. */
-const TAGS: [string[], string[]][] = [
-  [["ferreter"], ['["shop"="hardware"]', '["shop"="doityourself"]']],
-  [["cosmetic", "perfumer", "belleza", "maquillaje"], ['["shop"="cosmetics"]', '["shop"="perfumery"]', '["shop"="beauty"]']],
-  [["ropa", "moda", "vestuario", "boutique"], ['["shop"="clothes"]', '["shop"="boutique"]', '["shop"="fashion"]']],
-  [["zapater", "calzado"], ['["shop"="shoes"]']],
-  [["panader", "pasteler"], ['["shop"="bakery"]', '["shop"="pastry"]']],
-  [["farmacia", "droguer"], ['["amenity"="pharmacy"]']],
-  [["restaurante"], ['["amenity"="restaurant"]']],
-  [["supermercado", "minimercado", "tienda de barrio"], ['["shop"="supermarket"]', '["shop"="convenience"]']],
-  [["papeler"], ['["shop"="stationery"]']],
-  [["licor", "vinos"], ['["shop"="alcohol"]']],
-  [["mascota", "veterinar"], ['["shop"="pet"]', '["amenity"="veterinary"]']],
-  [["electronic", "tecnolog", "celular", "computador"], ['["shop"="electronics"]', '["shop"="mobile_phone"]', '["shop"="computer"]']],
-  [["flor"], ['["shop"="florist"]']],
-  [["joyer", "relojer"], ['["shop"="jewelry"]']],
-  [["mueble", "decoraci"], ['["shop"="furniture"]', '["shop"="interior_decoration"]']],
-  [["libreria"], ['["shop"="books"]']],
-  [["optica"], ['["shop"="optician"]']],
-  [["juguet"], ['["shop"="toys"]']],
-  [["deport"], ['["shop"="sports"]']],
-  [["ferret", "repuesto", "autopart"], ['["shop"="car_parts"]']],
-  [["lavander"], ['["shop"="laundry"]']],
-  [["carnicer", "pescader"], ['["shop"="butcher"]', '["shop"="seafood"]']],
-  [["fruver", "verdura", "fruta"], ['["shop"="greengrocer"]']],
+/** Categoría en español → filtros de etiquetas OSM + frase en inglés que entiende Nominatim (respaldo). Lo que no esté aquí se busca por nombre. */
+const TAGS: [string[], string[], string][] = [
+  [["ferreter"], ['["shop"="hardware"]', '["shop"="doityourself"]'], "hardware store"],
+  [["cosmetic", "perfumer", "belleza", "maquillaje"], ['["shop"="cosmetics"]', '["shop"="perfumery"]', '["shop"="beauty"]'], "cosmetics shop"],
+  [["ropa", "moda", "vestuario", "boutique"], ['["shop"="clothes"]', '["shop"="boutique"]', '["shop"="fashion"]'], "clothes shop"],
+  [["zapater", "calzado"], ['["shop"="shoes"]'], "shoe shop"],
+  [["panader", "pasteler"], ['["shop"="bakery"]', '["shop"="pastry"]'], "bakery"],
+  [["farmacia", "droguer"], ['["amenity"="pharmacy"]'], "pharmacy"],
+  [["restaurante"], ['["amenity"="restaurant"]'], "restaurant"],
+  [["supermercado", "minimercado", "tienda de barrio"], ['["shop"="supermarket"]', '["shop"="convenience"]'], "supermarket"],
+  [["papeler"], ['["shop"="stationery"]'], "stationery shop"],
+  [["licor", "vinos"], ['["shop"="alcohol"]'], "liquor store"],
+  [["mascota", "veterinar"], ['["shop"="pet"]', '["amenity"="veterinary"]'], "pet shop"],
+  [["electronic", "tecnolog", "celular", "computador"], ['["shop"="electronics"]', '["shop"="mobile_phone"]', '["shop"="computer"]'], "electronics shop"],
+  [["flor"], ['["shop"="florist"]'], "florist"],
+  [["joyer", "relojer"], ['["shop"="jewelry"]'], "jewelry shop"],
+  [["mueble", "decoraci"], ['["shop"="furniture"]', '["shop"="interior_decoration"]'], "furniture shop"],
+  [["libreria"], ['["shop"="books"]'], "book shop"],
+  [["optica"], ['["shop"="optician"]'], "optician"],
+  [["juguet"], ['["shop"="toys"]'], "toy shop"],
+  [["deport"], ['["shop"="sports"]'], "sports shop"],
+  [["ferret", "repuesto", "autopart"], ['["shop"="car_parts"]'], "car parts shop"],
+  [["lavander"], ['["shop"="laundry"]'], "laundry"],
+  [["carnicer", "pescader"], ['["shop"="butcher"]', '["shop"="seafood"]'], "butcher"],
+  [["fruver", "verdura", "fruta"], ['["shop"="greengrocer"]'], "greengrocer"],
 ];
 
 /** Solo letras, números y espacios: lo que escribe el usuario nunca llega crudo a la consulta. */
@@ -48,6 +48,12 @@ export function filtersFor(category: string): string[] {
   const hit = TAGS.find(([stems]) => stems.some((s) => flat.includes(s)));
   const byName = `["name"~"${term}",i]`;
   return hit ? hit[1] : [byName];
+}
+
+/** Frase de tipo de negocio que Nominatim entiende ("cosmetics shop"); null si la categoría no está mapeada. */
+export function phraseFor(category: string): string | null {
+  const flat = stripAccents(safeTerm(category)).toLowerCase();
+  return TAGS.find(([stems]) => stems.some((x) => flat.includes(x)))?.[2] ?? null;
 }
 
 interface OsmElement { type: string; id: number; lat?: number; lon?: number; center?: { lat: number; lon: number }; tags?: Record<string, string> }
@@ -102,14 +108,14 @@ export class OpenStreetMapConnector implements Connector {
   }
 
   /** Respaldo cuando Overpass no responde: búsqueda de texto de Nominatim (máx. 40, sin teléfono/web casi nunca). */
-  private async textFallback(category: string, place: string, signal?: AbortSignal): Promise<OsmElement[]> {
-    const url = `${NOMINATIM}?${new URLSearchParams({ q: `${safeTerm(category)}, ${place}`, format: "jsonv2", limit: "40", countrycodes: "co", extratags: "1", addressdetails: "1" })}`;
+  private async nominatimPlaces(q: string, signal?: AbortSignal) {
+    const url = `${NOMINATIM}?${new URLSearchParams({ q, format: "jsonv2", limit: "40", countrycodes: "co", extratags: "1", addressdetails: "1" })}`;
     const res = await this.fetchImpl(url, { headers: { "User-Agent": USER_AGENT }, signal: withTimeout(signal) });
     if (!res.ok) throw new Error(`Nominatim respondió ${res.status}`);
     const rows = (await res.json()) as { osm_type?: string; osm_id?: number; name?: string; category?: string; extratags?: Record<string, string>; address?: Record<string, string> }[];
     return rows
       .filter((r) => r.osm_type && r.osm_id && r.name && ["shop", "amenity", "office", "craft"].includes(r.category ?? ""))
-      .map((r) => ({
+      .map((r): OsmElement => ({
         type: r.osm_type!, id: r.osm_id!,
         tags: {
           name: r.name!, ...(r.extratags ?? {}),
@@ -117,6 +123,17 @@ export class OpenStreetMapConnector implements Connector {
           ...(r.address?.house_number ? { "addr:housenumber": r.address.house_number } : {}),
         },
       }));
+  }
+
+  /** Respaldo cuando Overpass no responde (máx. 40). Primero por TIPO de negocio ("cosmetics shop in …"); si no hay, por texto en el nombre. */
+  private async textFallback(category: string, place: string, signal?: AbortSignal): Promise<OsmElement[]> {
+    const phrase = phraseFor(category);
+    if (phrase) {
+      const byType = await this.nominatimPlaces(`${phrase} in ${place}`, signal);
+      if (byType.length) return byType;
+      await this.sleep(1100); // 1 solicitud por segundo
+    }
+    return this.nominatimPlaces(`${safeTerm(category)}, ${place}`, signal);
   }
 
   async search(criteria: SearchCriteria, signal?: AbortSignal): Promise<ConnectorResult> {
@@ -171,7 +188,7 @@ export class OpenStreetMapConnector implements Connector {
               address: t["addr:full"] ?? (street || null), city: criteria.city,
               sourceName: this.id, sourceId: key, sourceUrl: `https://www.openstreetmap.org/${el.type}/${el.id}`,
               consultedAt: new Date(), isDemo: false,
-              limitations: usedFallback ? `${ATTRIBUTION} Obtenido por búsqueda de texto (respaldo): el nombre puede coincidir con la categoría sin confirmar el tipo de negocio.` : ATTRIBUTION,
+              limitations: usedFallback ? `${ATTRIBUTION} Obtenido por búsqueda de texto (respaldo): el tipo de negocio viene de la clasificación de OpenStreetMap o, si no hay, del texto del nombre.` : ATTRIBUTION,
             });
           }
         }

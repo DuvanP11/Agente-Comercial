@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { OpenStreetMapConnector, filtersFor, safeTerm } from "@/lib/connectors/openstreetmap";
+import { OpenStreetMapConnector, filtersFor, phraseFor, safeTerm } from "@/lib/connectors/openstreetmap";
 import { searchCriteria } from "@/lib/connectors/types";
 
 const criteria = (o = {}) => searchCriteria.parse({ city: "Bogotá", categories: ["ferretería"], maxResults: 10, ...o });
@@ -80,6 +80,39 @@ describe("respaldo con búsqueda de texto", () => {
     const f = (async (url: string) => (String(url).includes("limit=40") ? new Response("x", { status: 503 }) : String(url).includes("nominatim") ? json([NOMINATIM_OK]) : new Response("c", { status: 502 }))) as unknown as typeof fetch;
     const r = await new OpenStreetMapConnector(f, ["u"], noSleep).search(criteria());
     expect(r.prospects).toEqual([]); expect(r.errors[0]).toMatch(/respaldo tampoco respondió/);
+  });
+});
+
+describe("respaldo por tipo de negocio", () => {
+  it("busca por tipo ('cosmetics shop in …') antes que por texto", async () => {
+    const urls: string[] = [];
+    const f = (async (url: string) => {
+      const u = decodeURIComponent(String(url).replace(/\+/g, " ")); urls.push(u);
+      if (u.includes("limit=40")) return json([{ osm_type: "node", osm_id: 7, name: "Glam House", category: "shop", extratags: {}, address: {} }]);
+      if (u.includes("nominatim")) return json([NOMINATIM_OK]);
+      return new Response("c", { status: 502 });
+    }) as unknown as typeof fetch;
+    const r = await new OpenStreetMapConnector(f, ["u"], noSleep).search(criteria({ categories: ["cosmética"] }));
+    expect(r.prospects.map((p) => p.name)).toEqual(["Glam House"]);
+    expect(urls.some((u) => u.includes("q=cosmetics shop in Bogotá"))).toBe(true);
+    expect(urls.some((u) => u.includes("q=cosmética,"))).toBe(false); // ya hubo resultados: no hace falta el texto
+  });
+  it("si por tipo no hay nada, prueba por texto; las categorías sin mapear van directo al texto", async () => {
+    const qs: string[] = [];
+    const f = (async (url: string) => {
+      const u = decodeURIComponent(String(url).replace(/\+/g, " "));
+      if (u.includes("limit=40")) { qs.push(u); return json([]); }
+      if (u.includes("nominatim")) return json([NOMINATIM_OK]);
+      return new Response("c", { status: 502 });
+    }) as unknown as typeof fetch;
+    await new OpenStreetMapConnector(f, ["u"], noSleep).search(criteria({ categories: ["cosmética", "astillero"] }));
+    expect(qs).toHaveLength(3); // cosmética: tipo + texto; astillero: solo texto
+    expect(qs[0]).toMatch(/q=cosmetics shop in/); expect(qs[1]).toMatch(/q=cosmética,/); expect(qs[2]).toMatch(/q=astillero,/);
+  });
+  it("phraseFor", () => {
+    expect(phraseFor("Ferretería")).toBe("hardware store");
+    expect(phraseFor("tienda de ropa")).toBe("clothes shop");
+    expect(phraseFor("astillero")).toBeNull();
   });
 });
 
