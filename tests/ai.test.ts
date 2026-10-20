@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { z } from "zod";
-import { AiError, aiConfigFromEnv, aiConfigsFromEnv, aiStatus, createFailoverProvider, createProvider, type AiProvider } from "@/lib/ai/provider";
+import { AiError, aiConfigFromEnv, aiConfigsFromEnv, aiStatus, createFailoverProvider, createProvider, checkProviders, type AiProvider } from "@/lib/ai/provider";
 import { AgentOutputError, appearsIn, inventedClaims, parseJsonOutput, untrusted } from "@/lib/ai/guards";
 
 const json = (b: unknown, s = 200) => new Response(JSON.stringify(b), { status: s });
@@ -184,5 +184,50 @@ describe("modelos con razonamiento visible", () => {
   });
   it("si el razonamiento quedó cortado y no hay JSON, falla con claridad", () => {
     expect(() => parseJsonOutput("<think>sigo pensando y pensando", S)).toThrow(AgentOutputError);
+  });
+});
+
+
+describe("probar conexión (sin enviar datos de negocio)", () => {
+  const env = { AI_BASE_URL: "https://api.groq.com/openai/v1", AI_MODEL: "llama-3.1-8b-instant", AI_API_KEY: "CLAVE-SECRETA" };
+  const models = (ids: string[]) => (async () => json({ data: ids.map((id) => ({ id })) })) as unknown as typeof fetch;
+
+  it("ok cuando el modelo existe", async () => {
+    const [c] = await checkProviders(env, models(["llama-3.3-70b-versatile", "llama-3.1-8b-instant"]));
+    expect(c).toMatchObject({ role: "principal", state: "ok", host: "api.groq.com" });
+  });
+  it("detecta el error típico: escribir el nombre de la empresa en vez del modelo", async () => {
+    const [c] = await checkProviders({ ...env, AI_MODEL: "groq" }, models(["llama-3.3-70b-versatile", "llama-3.1-8b-instant"]));
+    expect(c.state).toBe("model_not_found");
+    expect(c.message).toMatch(/«groq» no existe.*no el nombre de la empresa/);
+    expect(c.models).toEqual(["llama-3.1-8b-instant", "llama-3.3-70b-versatile"]); // ordenados, para copiar uno
+  });
+  it("clave rechazada, sin conexión, sin lista de modelos y error del servidor", async () => {
+    expect((await checkProviders(env, (async () => json({}, 401)) as unknown as typeof fetch))[0].state).toBe("auth");
+    expect((await checkProviders(env, (async () => { throw new Error("x"); }) as unknown as typeof fetch))[0].state).toBe("unreachable");
+    expect((await checkProviders(env, (async () => json({}, 404)) as unknown as typeof fetch))[0].state).toBe("unknown");
+    expect((await checkProviders(env, (async () => json({}, 500)) as unknown as typeof fetch))[0].state).toBe("error");
+    expect((await checkProviders(env, (async () => json({ data: [] })) as unknown as typeof fetch))[0].state).toBe("unknown");
+  });
+  it("revisa cada proveedor de la cadena con su rol", async () => {
+    const r = await checkProviders({ ...env, AI2_BASE_URL: "http://localhost:11434/v1", AI2_MODEL: "llama3.1:latest" }, models(["llama-3.1-8b-instant", "llama3.1:latest"]));
+    expect(r.map((x) => [x.role, x.state])).toEqual([["principal", "ok"], ["respaldo 1", "ok"]]);
+  });
+  it("entiende el formato de lista de Gemini (models/…)", async () => {
+    const f = (async () => json({ models: [{ name: "models/gemini-x" }] })) as unknown as typeof fetch;
+    expect((await checkProviders({ ...env, AI_MODEL: "gemini-x" }, f))[0].state).toBe("ok");
+  });
+  it("manda la clave al proveedor pero NUNCA la devuelve ni la deja en el resultado", async () => {
+    let auth: string | null = null;
+    const f = (async (_u: string, init: RequestInit) => { auth = new Headers(init.headers).get("authorization"); return json({ data: [{ id: "otro" }] }); }) as unknown as typeof fetch;
+    const r = await checkProviders(env, f);
+    expect(auth).toBe("Bearer CLAVE-SECRETA");
+    expect(JSON.stringify(r)).not.toContain("CLAVE-SECRETA");
+  });
+  it("sin proveedores configurados devuelve vacío", async () => { expect(await checkProviders({}, models([]))).toEqual([]); });
+  it("pide solo la lista de modelos (no envía prompts)", async () => {
+    const urls: string[] = [];
+    await checkProviders(env, (async (u: string) => { urls.push(u); return json({ data: [{ id: "x" }] }); }) as unknown as typeof fetch);
+    expect(urls).toEqual(["https://api.groq.com/openai/v1/models"]);
   });
 });

@@ -2,6 +2,7 @@ import { ensureDefaultOrg, getDb } from "@/lib/db/client";
 import { aiStatus } from "@/lib/ai/provider";
 import { AGENTS, EXTRA_AGENTS, MATURITY_LABEL, SKILLS, type Maturity } from "@/lib/agents/catalog";
 import { listRuns } from "@/lib/services/agents";
+import { TestConnection } from "./TestConnection";
 
 export const dynamic = "force-dynamic";
 const TONE: Record<Maturity, string> = { ready: "badge-ok", logic: "badge-warn", partial: "", pending: "" };
@@ -29,6 +30,7 @@ export default async function Agentes() {
         ) : (
           <><p className="text-sm"><span className="badge badge-warn">Pendiente</span> Falta {ai.missing.join(", ")}.</p>
             <p className="text-sm text-muted">{ai.howTo} Sirve cualquier API compatible con OpenAI. Algunos proveedores tienen plan gratuito: verifica sus condiciones vigentes y que permitan enviar información de negocios.</p></>)}
+        {ai.state === "connected" && <TestConnection />}
         {ai.warnings.map((w) => <p key={w} role="alert" className="text-sm badge-warn">⚠ {w}</p>)}
         <p className="text-xs text-muted">Al proveedor no se le envían teléfonos ni correos de prospectos, solo si existen.</p>
       </section>

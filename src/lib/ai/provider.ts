@@ -157,3 +157,40 @@ export function providerFromEnv(): AiProvider | null {
   const chain = all.map((c, i) => (c ? { label: `${ROLE_LABEL[i]} (${hostOf(c.baseUrl)})`, provider: createProvider(c) } : null)).filter((x): x is { label: string; provider: AiProvider } => x !== null);
   return chain.length === 1 ? chain[0].provider : createFailoverProvider(chain);
 }
+
+export interface ProviderCheck {
+  role: ProviderInfo["role"]; host: string; model: string;
+  /** ok = el modelo existe · model_not_found = la clave sirve pero ese modelo no · auth = clave rechazada · unreachable = no hay conexión · unknown = el proveedor no lista modelos · error = otro fallo */
+  state: "ok" | "model_not_found" | "auth" | "unreachable" | "unknown" | "error";
+  message: string;
+  /** Modelos que el proveedor dice tener (máx. 40), para elegir uno válido. */
+  models: string[];
+}
+
+/**
+ * Comprueba cada proveedor configurado SIN enviar datos de negocio: solo pide la lista de modelos (GET /models)
+ * y verifica que el modelo escrito exista. Nunca devuelve la clave.
+ */
+export async function checkProviders(env: Record<string, string | undefined> = process.env, fetchImpl: typeof fetch = fetch): Promise<ProviderCheck[]> {
+  const out: ProviderCheck[] = [];
+  const entries = PREFIXES.map((p, i) => ({ c: readConfig(env, p), role: ROLES[i] })).filter((x): x is { c: AiConfig; role: ProviderInfo["role"] } => x.c !== null);
+  for (const { c, role } of entries) {
+    const base = { role, host: hostOf(c.baseUrl), model: c.model };
+    try {
+      const res = await fetchImpl(`${c.baseUrl}/models`, { headers: c.apiKey ? { Authorization: `Bearer ${c.apiKey}` } : {}, signal: AbortSignal.timeout(10_000) });
+      if (res.status === 401 || res.status === 403) { out.push({ ...base, state: "auth", message: "El proveedor rechazó la clave (AI_API_KEY). Revisa que esté completa y vigente.", models: [] }); continue; }
+      if (res.status === 404) { out.push({ ...base, state: "unknown", message: "Este proveedor no ofrece la lista de modelos. La conexión no se puede comprobar sin hacer una consulta real.", models: [] }); continue; }
+      if (!res.ok) { out.push({ ...base, state: "error", message: `El proveedor respondió ${res.status}.`, models: [] }); continue; }
+      const data = (await res.json()) as { data?: { id?: unknown }[]; models?: { name?: unknown }[] };
+      const ids = [...(data.data ?? []).map((m) => m.id), ...(data.models ?? []).map((m) => String(m.name ?? "").replace(/^models\//, ""))].filter((x): x is string => typeof x === "string" && x.length > 0);
+      const unique = [...new Set(ids)].sort();
+      if (unique.length === 0) { out.push({ ...base, state: "unknown", message: "El proveedor no devolvió modelos; no se puede comprobar.", models: [] }); continue; }
+      if (unique.includes(c.model)) out.push({ ...base, state: "ok", message: "Conexión correcta y el modelo existe.", models: unique.slice(0, 40) });
+      else out.push({ ...base, state: "model_not_found", message: `El modelo «${c.model}» no existe en este proveedor. AI_MODEL debe ser el identificador exacto de un modelo de la lista (no el nombre de la empresa).`, models: unique.slice(0, 40) });
+    } catch (e) {
+      const timeout = e instanceof Error && e.name === "TimeoutError";
+      out.push({ ...base, state: "unreachable", message: timeout ? "El proveedor no respondió a tiempo." : "No se pudo conectar. Revisa AI_BASE_URL (y que el servicio esté encendido, si es local).", models: [] });
+    }
+  }
+  return out;
+}
