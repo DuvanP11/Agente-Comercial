@@ -1,5 +1,6 @@
 "use client";
 import { useActionState, useState, useTransition } from "react";
+import type { QualificationProposal } from "@/lib/agents/qualification";
 import { CRITERION_LABELS, DEFAULT_WEIGHTS, type CriterionAssessment, type CriterionKey } from "@/lib/scoring/score";
 import { proposeAction, qualifyAction, saveAction, type AnalysisState, type ProposeResult } from "./actions";
 
@@ -11,8 +12,9 @@ const KEYS = Object.keys(DEFAULT_WEIGHTS) as CriterionKey[];
 interface Row { kind: string; value: string; note: string; ev: string[] }
 const snap = (n: number) => String(VALUES.reduce((a, b) => (Math.abs(b - n) < Math.abs(a - n) ? b : a)));
 
-export function AssessmentForm({ prospectId, evidence, current, status, aiReady = false }: {
+export function AssessmentForm({ prospectId, evidence, current, status, aiReady = false, saved }: {
   prospectId: string; evidence: Ev[]; current: Partial<Record<CriterionKey, CriterionAssessment>>; status: string; aiReady?: boolean;
+  saved?: { proposal: QualificationProposal; at: string };
 }) {
   const [s, action, pending] = useActionState<AnalysisState, FormData>(saveAction.bind(null, prospectId), {});
   // Campos controlados: así se les puede cargar la propuesta de la IA y no se vacían al guardar.
@@ -27,25 +29,30 @@ export function AssessmentForm({ prospectId, evidence, current, status, aiReady 
   const [qpending, start] = useTransition();
   const set = (k: CriterionKey, patch: Partial<Row>) => setRows((r) => ({ ...r, [k]: { ...r[k], ...patch } }));
 
-  const propose = () => startAi(async () => {
-    const r = await proposeAction(prospectId);
-    setAi(r);
-    if (!r.ok || !r.proposal) return;
+  const apply = (proposal: QualificationProposal) => {
     const next: Partial<Record<CriterionKey, Row>> = {};
     const org: Partial<Record<CriterionKey, "model" | "rule">> = {};
-    for (const a of r.proposal.assessments) {
+    for (const a of proposal.assessments) {
       next[a.criterion] = { kind: a.kind, value: snap(a.value), note: a.note, ev: a.kind === "confirmed" ? a.evidenceIds : [] };
       org[a.criterion] = a.origin;
     }
     setRows((cur) => ({ ...cur, ...next } as Record<CriterionKey, Row>));
     setOrigin(org);
+  };
+  const propose = () => startAi(async () => {
+    const r = await proposeAction(prospectId);
+    setAi(r);
+    if (r.ok && r.proposal) apply(r.proposal);
   });
+  const loadSaved = () => { if (saved) { apply(saved.proposal); setAi({ ok: true, warnings: [], proposal: saved.proposal }); } };
+  const minutes = saved ? Math.max(1, Math.round((Date.now() - new Date(saved.at).getTime()) / 60000)) : 0;
 
   return (
     <div className="space-y-4">
       <div className="card space-y-2">
         <div className="flex flex-wrap items-center gap-3">
           <button type="button" className="btn" disabled={!aiReady || aiPending} onClick={propose}>{aiPending ? "Analizando…" : "Proponer con IA"}</button>
+          {saved && <button type="button" className="btn" onClick={loadSaved}>Cargar propuesta ya hecha (hace {minutes < 60 ? `${minutes} min` : `${Math.round(minutes / 60)} h`})</button>}
           <span className="text-xs text-muted">{aiReady ? "Carga en el formulario una propuesta de valoración. No se guarda nada hasta que pulses «Guardar valoración»." : "IA no configurada: valora a mano (ver Agentes y skills)."}</span>
         </div>
         {ai && !ai.ok && <p role="alert" className="text-sm badge-bad">{ai.error}</p>}

@@ -10,7 +10,7 @@ import { ensureDefaultOrg, getDb } from "@/lib/db/client";
 import { messages, prospects } from "@/lib/db/schema";
 import { ingestProspects } from "@/lib/services/prospects";
 import { addProspects, campaignDetail, createCampaign } from "@/lib/services/campaigns";
-import { interpretAction } from "@/app/buscar/actions";
+import { analyzeResultsAction, interpretAction } from "@/app/buscar/actions";
 import { proposeAction } from "@/app/analizar/[id]/actions";
 import { aiDraftAction } from "@/app/campanas/actions";
 
@@ -85,5 +85,38 @@ describe("botón: Redactar con IA (Campañas)", () => {
   });
   it("sin IA configurada, error claro", async () => {
     use(null); expect((await aiDraftAction(camp(), cpId, "")).error).toMatch(/IA no está configurada/);
+  });
+});
+
+
+describe("botón: Analizar resultados con IA (Buscar)", () => {
+  const reply = '{"assessments":[{"criterion":"logistics_need","kind":"inferred","value":0.7,"evidenceIds":[],"note":"Vende productos físicos."}],"summary":"Tienda de belleza."}';
+  it("devuelve la lectura de cada resultado y no guarda ninguna valoración", async () => {
+    use(reply);
+    const r = await analyzeResultsAction([pid]);
+    expect(r.error).toBeUndefined(); expect(r.readings).toHaveLength(1);
+    // Una prueba anterior ya pidió la propuesta de este prospecto: se REUTILIZA (cached) en vez de gastar otra llamada.
+    expect(r.readings[0]).toMatchObject({ prospectId: pid, state: expect.stringMatching(/analyzed|cached/) });
+    expect(r.readings[0].headline).toBeTruthy();
+    const db = await getDb();
+    expect((await db.select().from(prospects).where(eq(prospects.id, pid)))[0].scoreJson).toBeNull();
+  });
+  it("sin IA configurada, lo dice sin llamar a nadie", async () => {
+    use(null);
+    const r = await analyzeResultsAction([pid]);
+    expect(r.stopped).toMatch(/no está configurada/); expect(r.analyzed).toBe(0);
+  });
+  it("ignora entradas raras en vez de fallar", async () => {
+    use(reply);
+    expect((await analyzeResultsAction(null as unknown as string[])).readings).toEqual([]);
+    expect((await analyzeResultsAction([123 as unknown as string, "no-existe"])).readings.every((x) => x.state === "skipped")).toBe(true);
+  });
+});
+
+describe("mensaje cuando el texto no tiene un rubro", () => {
+  it("se muestra como indicación, no como «Respuesta rechazada»", async () => {
+    use('{"city":"Bogotá","zones":[],"categories":[],"maxResults":null,"excludeTerms":[],"notes":null}');
+    const r = await interpretAction("MLT Racores");
+    expect(r.ok).toBe(false); expect(r.error).toMatch(/^No se pudo identificar ningún rubro/); expect(r.error).not.toMatch(/Respuesta rechazada/);
   });
 });

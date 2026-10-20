@@ -279,3 +279,84 @@ describe("historial", () => {
     expect(r.ok).toBe(false);
   });
 });
+
+import { analyzeBatch, latestQualification, previewScore } from "@/lib/services/agents";
+
+describe("analizar varios resultados con IA (vista previa)", () => {
+  let d: Db, o: string, ids: string[];
+  const reply = '{"assessments":[{"criterion":"logistics_need","kind":"inferred","value":0.8,"evidenceIds":[],"note":"Vende productos físicos."},{"criterion":"icp_fit","kind":"inferred","value":0.6,"evidenceIds":[],"note":""},{"criterion":"delivery_volume","kind":"hypothesis","value":0.5,"evidenceIds":[],"note":""}],"summary":"Tienda de belleza con local propio."}';
+  const counting = (text: string) => { const c = { n: 0 }; const p: AiProvider = { model: "fake", async complete() { c.n++; return { text, model: "fake" }; } }; return { c, p }; };
+
+  beforeAll(async () => {
+    d = await createPgliteDb(); o = await ensureDefaultOrg(d);
+    const out = await ingestProspects(d, o, Array.from({ length: 12 }, (_, i) => raw({ name: `Negocio Belleza ${["Alfa", "Beta", "Gamma", "Delta", "Epsilon", "Zeta", "Eta", "Theta", "Iota", "Kappa", "Lambda", "Mu"][i]}`, category: "cosmética", phone: `31055500${String(i).padStart(2, "0")}`, sourceId: `b${i}` })));
+    ids = out.map((x) => x.prospectId);
+  });
+
+  it("respeta el máximo por lote y deja el resto pendiente", async () => {
+    const { c, p } = counting(reply);
+    const r = await analyzeBatch(d, o, ids, p, "t", { max: 5 });
+    expect(c.n).toBe(5); expect(r.analyzed).toBe(5); expect(r.pending).toBe(7);
+    expect(r.readings.filter((x) => x.state === "skipped" && /pulsa de nuevo/.test(x.reason!))).toHaveLength(7);
+  });
+  it("pulsar otra vez CONTINÚA: reutiliza lo analizado sin volver a llamar a la IA", async () => {
+    const { c, p } = counting(reply);
+    const r = await analyzeBatch(d, o, ids, p, "t", { max: 5 });
+    expect(r.cached).toBe(5); expect(c.n).toBe(5); expect(r.analyzed).toBe(5); // 5 cacheados + 5 nuevos, 2 pendientes
+    const r3 = await analyzeBatch(d, o, ids, p, "t", { max: 5 });
+    expect(c.n).toBe(7); expect(r3.cached).toBe(10); expect(r3.pending).toBe(0);
+  });
+  it("devuelve una vista previa del puntaje y NO guarda ninguna valoración", async () => {
+    const { p } = counting(reply);
+    const r = await analyzeBatch(d, o, [ids[0]], p, "t");
+    expect(r.readings[0]).toMatchObject({ state: "cached", headline: "Tienda de belleza con local propio." });
+    expect(r.readings[0].priority).not.toBeNull();
+    const [row] = await d.select().from(prospects).where(eq(prospects.id, ids[0]));
+    expect(row.scoreJson).toBeNull();
+  });
+  it("se detiene al llegar el límite de uso del proveedor y no sigue gastando", async () => {
+    const d2 = await createPgliteDb(); const o2 = await ensureDefaultOrg(d2);
+    const out = await ingestProspects(d2, o2, ["Uno Alfa", "Dos Beta", "Tres Gamma", "Cuatro Delta"].map((n, i) => raw({ name: `Local ${n}`, sourceId: `x${i}` })));
+    let n = 0;
+    const p: AiProvider = { model: "fake", async complete() { n++; if (n === 2) throw new AiError("rate_limit", "El proveedor de IA alcanzó su límite de uso."); return { text: reply, model: "fake" }; } };
+    const r = await analyzeBatch(d2, o2, out.map((x) => x.prospectId), p, "t");
+    expect(n).toBe(2); // 1 bien, 1 límite, y las demás NO se intentan
+    expect(r.analyzed).toBe(1); expect(r.stopped).toMatch(/alcanzó su límite de uso/);
+    expect(r.readings.filter((x) => x.state === "skipped")).toHaveLength(2);
+  });
+  it("respeta el tope de tiempo", async () => {
+    const d2 = await createPgliteDb(); const o2 = await ensureDefaultOrg(d2);
+    const out = await ingestProspects(d2, o2, ["Uno Alfa", "Dos Beta", "Tres Gamma"].map((n, i) => raw({ name: `Local ${n}`, sourceId: `y${i}` })));
+    let t = 0;
+    const p: AiProvider = { model: "fake", async complete() { t += 30_000; return { text: reply, model: "fake" }; } };
+    const r = await analyzeBatch(d2, o2, out.map((x) => x.prospectId), p, "t", { now: () => t, deadlineMs: 45_000 });
+    expect(r.analyzed).toBe(2); expect(r.stopped).toMatch(/tiempo del lote/);
+  });
+  it("salta duplicados excluidos y «No contactar», y avisa por qué", async () => {
+    const d2 = await createPgliteDb(); const o2 = await ensureDefaultOrg(d2);
+    const out = await ingestProspects(d2, o2, [raw({ name: "Glam House", phone: "3107778899", sourceId: "1" }), raw({ name: "Glam House Sur", phone: "+57 310 777 8899", sourceId: "2" }), raw({ name: "Bloqueado Ltda", sourceId: "3" })]);
+    await setDoNotContact(d2, o2, out[2].prospectId, true, null, "t");
+    const { c, p } = counting(reply);
+    const r = await analyzeBatch(d2, o2, out.map((x) => x.prospectId), p, "t");
+    expect(c.n).toBe(1);
+    expect(r.readings.map((x) => x.reason ?? x.state)).toEqual(["analyzed", "Duplicado excluido.", "Marcado «No contactar»."]);
+  });
+  it("un fallo de un prospecto no frena a los demás", async () => {
+    const d2 = await createPgliteDb(); const o2 = await ensureDefaultOrg(d2);
+    const out = await ingestProspects(d2, o2, ["Uno Alfa", "Dos Beta"].map((n, i) => raw({ name: `Local ${n}`, sourceId: `z${i}` })));
+    let n = 0;
+    const p: AiProvider = { model: "fake", async complete() { n++; return { text: n <= 2 ? "no soy JSON" : reply, model: "fake" }; } }; // el 1.º agota sus 2 intentos
+    const r = await analyzeBatch(d2, o2, out.map((x) => x.prospectId), p, "t");
+    expect(r.readings.map((x) => x.state)).toEqual(["error", "analyzed"]);
+  });
+  it("sin IA configurada responde claro sin llamar a nadie", async () => {
+    const r = await analyzeBatch(d, o, ids.slice(0, 2), null, "t");
+    expect(r.stopped).toMatch(/no está configurada/); expect(r.analyzed).toBe(0);
+  });
+  it("latestQualification devuelve la última propuesta para cargarla en Analizar", async () => {
+    const got = await latestQualification(d, o, ids[0]);
+    expect(got!.proposal.assessments.find((a) => a.criterion === "logistics_need")!.value).toBe(0.8);
+    expect(previewScore(got!.proposal).priority).not.toBeNull();
+    expect(await latestQualification(d, o, "00000000-0000-0000-0000-000000000000")).toBeNull();
+  });
+});

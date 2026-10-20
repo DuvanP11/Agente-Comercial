@@ -6,6 +6,8 @@ import { prospects } from "@/lib/db/schema";
 import { evidenceFor, type StoredScore } from "@/lib/services/analysis";
 import { CRITERION_LABELS } from "@/lib/scoring/score";
 import { aiReady } from "@/lib/ai/ready";
+import { latestQualification } from "@/lib/services/agents";
+import { ensureDefaultOrg } from "@/lib/db/client";
 import { AssessmentForm } from "./AssessmentForm";
 
 export const dynamic = "force-dynamic";
@@ -17,6 +19,7 @@ export default async function Analisis({ params }: { params: Promise<{ id: strin
   if (!p) notFound();
   const ev = await evidenceFor(db, id);
   const s = p.scoreJson as StoredScore | null;
+  const saved = await latestQualification(db, await ensureDefaultOrg(db), id);
   const blocked = p.status === "excluded_duplicate" || p.status === "needs_review";
   return (
     <div className="space-y-4">
@@ -33,7 +36,7 @@ export default async function Analisis({ params }: { params: Promise<{ id: strin
           <p className="text-xs text-muted">Valorado por {s.assessedBy} el {new Date(s.assessedAt).toLocaleString("es-CO")}. La prioridad no es una probabilidad de contratación; se necesita al menos 40 % de cobertura para mostrarla.</p>
         </section>
       )}
-      <AssessmentForm prospectId={id} evidence={ev.map((e) => ({ id: e.id, field: e.field, observedValue: e.observedValue, sourceName: e.sourceName }))} current={s?.assessments ?? {}} status={p.status} aiReady={aiReady()} />
+      <AssessmentForm prospectId={id} evidence={ev.map((e) => ({ id: e.id, field: e.field, observedValue: e.observedValue, sourceName: e.sourceName }))} current={s?.assessments ?? {}} status={p.status} aiReady={aiReady()} saved={saved ? { proposal: saved.proposal, at: saved.at.toISOString() } : undefined} />
     </div>
   );
 }

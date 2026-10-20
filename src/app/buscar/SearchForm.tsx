@@ -1,7 +1,8 @@
 "use client";
 import { useActionState, useEffect, useState, useTransition } from "react";
 import { OutcomeTable } from "@/components/OutcomeTable";
-import { interpretAction, runSearch, type InterpretResult, type SearchState } from "./actions";
+import { analyzeResultsAction, interpretAction, runSearch, type AnalyzeResult, type InterpretResult, type SearchState } from "./actions";
+import type { Reading } from "@/lib/services/agents";
 import type { IngestOutcome } from "@/lib/services/prospects";
 
 
@@ -28,6 +29,16 @@ export function SearchForm({ sources, restored, aiReady = false }: { sources: So
   const [excludeTerms, setExcludeTerms] = useState(c?.excludeTerms.join(", ") ?? "");
   const [maxResults, setMaxResults] = useState(String(c?.maxResults ?? 20));
 
+  const [readings, setReadings] = useState<Record<string, Reading>>({});
+  const [batch, setBatch] = useState<AnalyzeResult | null>(null);
+  const [analyzing, startAnalyze] = useTransition();
+  const analyze = () => startAnalyze(async () => {
+    const ids = (s.outcomes ?? []).filter((o) => o.status !== "excluded_duplicate").map((o) => o.prospectId);
+    const r = await analyzeResultsAction(ids);
+    setBatch(r);
+    // Se conserva lo ya leído; solo se reemplazan filas con un resultado nuevo (no las «omitidas» de este lote).
+    setReadings((cur) => { const next = { ...cur }; for (const x of r.readings) if (x.state !== "skipped" || !next[x.prospectId]) next[x.prospectId] = x; return next; });
+  });
   const [ai, setAi] = useState<InterpretResult | null>(null);
   const [aiPending, startAi] = useTransition();
   const interpret = () => startAi(async () => {
@@ -89,7 +100,17 @@ export function SearchForm({ sources, restored, aiReady = false }: { sources: So
         <div className="card space-y-3">
           <p role="status" className="font-semibold">{s.message}</p>
           {s.errors?.map((e) => <p key={e} className="text-sm badge-warn">Fuente con error parcial: {e}</p>)}
-          <OutcomeTable outcomes={s.outcomes!} searchId={s.searchId} />
+          <div className="flex flex-wrap items-center gap-3">
+            <button type="button" className="btn" disabled={!aiReady || analyzing || (s.outcomes ?? []).length === 0} onClick={analyze}>{analyzing ? "Analizando… (puede tardar)" : "Analizar resultados con IA"}</button>
+            <span className="text-xs text-muted">{aiReady ? "Lee hasta 8 resultados por clic y muestra una vista previa. No guarda ninguna valoración; vuelve a pulsar para continuar con los pendientes." : "IA no configurada (ver Agentes y skills)."}</span>
+          </div>
+          {batch?.error && <p role="alert" className="text-sm badge-bad">{batch.error}</p>}
+          {batch && !batch.error && (
+            <div role="status" className="text-sm">
+              <p>{batch.analyzed} analizados ahora{batch.cached ? `, ${batch.cached} con análisis previo reutilizado` : ""}{batch.pending ? `, ${batch.pending} pendientes (pulsa de nuevo)` : ""}.</p>
+              {batch.stopped && <p className="badge-warn">⚠ {batch.stopped}</p>}
+            </div>)}
+          <OutcomeTable outcomes={s.outcomes!} searchId={s.searchId} readings={Object.keys(readings).length ? readings : undefined} />
         </div>
       )}
     </div>

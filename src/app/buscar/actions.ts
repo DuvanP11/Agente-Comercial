@@ -7,7 +7,7 @@ import { searches } from "@/lib/db/schema";
 import { ingestProspects, type IngestOutcome } from "@/lib/services/prospects";
 import { saveSnapshot } from "@/lib/services/searches";
 import { providerFromEnv } from "@/lib/ai/provider";
-import { interpretSearch } from "@/lib/services/agents";
+import { analyzeBatch, interpretSearch, type BatchResult } from "@/lib/services/agents";
 import type { InterpretedSearch } from "@/lib/agents/searchInterpreter";
 
 export interface SearchState {
@@ -69,9 +69,25 @@ export async function interpretAction(text: string): Promise<InterpretResult> {
   try {
     const db = await getDb();
     const r = await interpretSearch(db, await ensureDefaultOrg(db), text, providerFromEnv(), "usuario");
-    return { ok: r.ok, error: r.error, warnings: r.warnings, output: r.output };
+    // "Respuesta rechazada:" suena a error del sistema; aquí es una indicación para quien escribe.
+    return { ok: r.ok, error: r.error?.replace(/^Respuesta rechazada: /, ""), warnings: r.warnings, output: r.output };
   } catch (e) {
     console.error("interpretAction falló:", e);
     return { ok: false, error: "No se pudo interpretar la búsqueda.", warnings: [] };
+  }
+}
+
+
+export type AnalyzeResult = BatchResult & { error?: string };
+
+/** La IA lee varios resultados a la vez (hasta 8 por clic). Es una vista previa: no guarda ninguna valoración. */
+export async function analyzeResultsAction(prospectIds: string[]): Promise<AnalyzeResult> {
+  try {
+    const ids = Array.isArray(prospectIds) ? prospectIds.filter((x) => typeof x === "string").slice(0, 60) : [];
+    const db = await getDb();
+    return await analyzeBatch(db, await ensureDefaultOrg(db), ids, providerFromEnv(), "usuario");
+  } catch (e) {
+    console.error("analyzeResultsAction falló:", e);
+    return { readings: [], analyzed: 0, cached: 0, pending: 0, error: "No se pudieron analizar los resultados." };
   }
 }
