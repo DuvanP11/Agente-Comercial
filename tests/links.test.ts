@@ -18,3 +18,18 @@ describe("enlaces de contacto", () => {
     expect(telLink("abc")).toBeNull();
   });
 });
+
+import { NAV } from "@/lib/nav";
+
+describe("navegación", () => {
+  it("cada módulo pendiente apunta a /m/<slug> y cada módulo con pantalla apunta a su ruta real", () => {
+    for (const n of NAV) {
+      if (n.status === "pending") expect(n.href).toBe(`/m/${n.slug}`);
+      else expect(n.href.startsWith("/m/")).toBe(false);
+    }
+  });
+  it("no hay rutas ni slugs repetidos", () => {
+    expect(new Set(NAV.map((n) => n.href)).size).toBe(NAV.length);
+    expect(new Set(NAV.map((n) => n.slug)).size).toBe(NAV.length);
+  });
+});
