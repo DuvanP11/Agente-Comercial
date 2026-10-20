@@ -1,9 +1,8 @@
 "use client";
 import { useActionState, useState } from "react";
+import { OutcomeTable } from "@/components/OutcomeTable";
 import { runSearch, type SearchState } from "./actions";
 
-const BADGE = { new: "badge-ok", excluded_duplicate: "badge-bad", needs_review: "badge-warn", already_stored: "" } as const;
-const LABEL = { new: "Nuevo", excluded_duplicate: "Excluido (duplicado)", needs_review: "Revisar duplicado", already_stored: "Ya guardado" } as const;
 
 interface Source { id: string; label: string; ready: boolean; howTo?: string }
 
@@ -37,13 +36,7 @@ export function SearchForm({ sources }: { sources: Source[] }) {
         <div className="card space-y-3">
           <p role="status" className="font-semibold">{s.message}</p>
           {s.errors?.map((e) => <p key={e} className="text-sm badge-warn">Fuente con error parcial: {e}</p>)}
-          <table className="table">
-            <thead><tr><th>Empresa</th><th>Resultado</th><th>Detalle</th></tr></thead>
-            <tbody>{s.outcomes!.map((o) => (
-              <tr key={o.prospectId}><td>{o.name}</td><td><span className={`badge ${BADGE[o.status]}`}>{LABEL[o.status]}</span></td>
-                <td className="text-sm">{o.message}{o.matchedWith && <> Coincide con {o.matchedWith.type === "client" ? "cliente" : "prospecto"}: <b>{o.matchedWith.name}</b>.</>}</td></tr>
-            ))}</tbody>
-          </table>
+          <OutcomeTable outcomes={s.outcomes!} />
         </div>
       )}
     </div>

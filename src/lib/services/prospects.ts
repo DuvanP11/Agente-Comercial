@@ -8,9 +8,15 @@ import type { RawProspect } from "../connectors/types";
 export interface IngestOutcome {
   prospectId: string;
   name: string;
+  category?: string | null;
+  address?: string | null;
+  phone?: string | null;
+  website?: string | null;
+  email?: string | null;
+  sourceUrl?: string | null;
   status: "new" | "excluded_duplicate" | "needs_review" | "already_stored";
   message?: string;
-  matchedWith?: { type: "client" | "prospect"; id: string; name: string };
+  matchedWith?: { type: "client" | "prospect"; id: string; name: string; address?: string | null; phone?: string | null; website?: string | null };
   reasons?: unknown;
 }
 
@@ -36,6 +42,7 @@ export async function ingestProspects(db: Db, orgId: string, raws: RawProspect[]
   ];
 
   const outcomes: IngestOutcome[] = [];
+  const shown = (raw: RawProspect) => ({ category: raw.category, address: raw.address, phone: raw.phone, website: raw.website, email: raw.email, sourceUrl: raw.sourceUrl });
   for (const raw of raws) {
     const candidate: CompanyRecord = {
       id: "candidate", origin: "prospect", name: raw.name, website: raw.website, phone: raw.phone,
@@ -57,7 +64,7 @@ export async function ingestProspects(db: Db, orgId: string, raws: RawProspect[]
       const [existing] = raw.sourceId
         ? await db.select().from(prospects).where(and(eq(prospects.orgId, orgId), eq(prospects.sourceName, raw.sourceName), eq(prospects.sourceId, raw.sourceId))).limit(1)
         : [];
-      if (existing) outcomes.push({ prospectId: existing.id, name: existing.name, status: "already_stored", message: "Ya estaba guardado de una búsqueda anterior; no se duplicó." });
+      if (existing) outcomes.push({ prospectId: existing.id, name: existing.name, ...shown(raw), status: "already_stored", message: "Ya estaba guardado de una búsqueda anterior; no se duplicó." });
       continue;
     }
 
@@ -87,10 +94,11 @@ export async function ingestProspects(db: Db, orgId: string, raws: RawProspect[]
         decidedAt: top.level === "exact" ? new Date() : null,
       });
     }
+    const matchRef = top ? refs.find((r) => r.id === top.reference.id)! : undefined;
     outcomes.push({
-      prospectId: row.id, name: raw.name, status,
-      message: top ? duplicateMessage(top.level, refs.find((r) => r.id === top.reference.id)!.refType) : undefined,
-      matchedWith: top ? { type: refs.find((r) => r.id === top.reference.id)!.refType, id: top.reference.id, name: top.reference.name } : undefined,
+      prospectId: row.id, name: raw.name, ...shown(raw), status,
+      message: top ? duplicateMessage(top.level, matchRef!.refType) : undefined,
+      matchedWith: matchRef ? { type: matchRef.refType, id: matchRef.id, name: matchRef.name, address: matchRef.address, phone: matchRef.phone, website: matchRef.website } : undefined,
       reasons: top?.reasons,
     });
   }

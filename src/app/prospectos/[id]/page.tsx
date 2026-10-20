@@ -44,7 +44,7 @@ export default async function Ficha({ params }: { params: Promise<{ id: string }
           <p className={`font-semibold ${r.level === "exact" ? "badge-bad" : "badge-warn"}`}>
             {duplicateMessage(r.level as "exact" | "probable", r.referenceType as "client" | "prospect")}
           </p>
-          <p className="text-sm">Coincide con {r.referenceType === "client" ? "cliente" : "prospecto"} <b>{refNames.get(r.id)}</b>. Campos: {(r.reasons as { field: string; candidateValue: string; referenceValue: string }[]).map((x) => `${x.field} (${x.candidateValue} ↔ ${x.referenceValue})`).join("; ")}.</p>
+          <p className="text-sm">Coincide con {r.referenceType === "client" ? "un cliente existente" : "un prospecto que ya tenías guardado"}: {r.referenceType === "prospect" ? <Link className="font-semibold underline" href={`/prospectos/${r.referenceId}`}>{refNames.get(r.id)}</Link> : <b>{refNames.get(r.id)}</b>}. Campos: {(r.reasons as { field: string; candidateValue: string; referenceValue: string }[]).map((x) => `${x.field} (${x.candidateValue} ↔ ${x.referenceValue})`).join("; ")}.</p>
           <p className="text-xs text-muted">Decisión: {r.decision}{r.decidedBy ? ` por ${r.decidedBy}` : ""}</p>
           <div className="flex flex-wrap gap-2">
             {(["excluded", "linked", "not_duplicate"] as const).map((d) => (

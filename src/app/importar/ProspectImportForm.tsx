@@ -1,11 +1,10 @@
 "use client";
 import { useActionState, useState } from "react";
+import { OutcomeTable } from "@/components/OutcomeTable";
 import { commitProspectsAction, previewProspectsAction, type ProspectImportState } from "./actions";
 import { PROSPECT_FIELDS } from "@/lib/services/prospect-import";
 
 const LABELS: Record<string, string> = { name: "Nombre de la empresa *", category: "Categoría / sector", website: "Sitio web", phone: "Teléfono", email: "Correo", address: "Dirección", city: "Ciudad" };
-const BADGE = { new: "badge-ok", excluded_duplicate: "badge-bad", needs_review: "badge-warn", already_stored: "" } as const;
-const LABEL = { new: "Nuevo", excluded_duplicate: "Excluido (duplicado)", needs_review: "Revisar duplicado", already_stored: "Ya guardado" } as const;
 
 export function ProspectImportForm() {
   const [prev, previewDispatch, previewing] = useActionState<ProspectImportState, FormData>(previewProspectsAction, { step: "idle" });
@@ -28,10 +27,7 @@ export function ProspectImportForm() {
       {done.step === "done" && (
         <div className="card space-y-2">
           <p role="status" className="font-semibold">Se procesaron {done.outcomes!.length} prospectos ({done.outcomes!.filter((o) => o.status === "already_stored").length} ya estaban guardados){done.skipped ? `; ${done.skipped} filas sin nombre se omitieron` : ""}. Cada uno se comparó con tus clientes y prospectos.</p>
-          <table className="table"><thead><tr><th>Empresa</th><th>Resultado</th><th>Detalle</th></tr></thead>
-            <tbody>{done.outcomes!.map((o) => (
-              <tr key={o.prospectId}><td>{o.name}</td><td><span className={`badge ${BADGE[o.status]}`}>{LABEL[o.status]}</span></td>
-                <td className="text-sm">{o.message}{o.matchedWith && <> Coincide con {o.matchedWith.type === "client" ? "cliente" : "prospecto"}: <b>{o.matchedWith.name}</b>.</>}</td></tr>))}</tbody></table>
+          <OutcomeTable outcomes={done.outcomes!} />
         </div>
       )}
 

@@ -43,6 +43,8 @@ describe("ingesta con deduplicación", () => {
     expect(o.status).toBe("excluded_duplicate");
     expect(o.message).toMatch(/ya está registrado/);
     expect(o.matchedWith?.type).toBe("client");
+    expect(o.matchedWith?.name).toBe("Cosmeticos La Rosa SAS"); // con quién coincide, visible
+    expect(o.website).toBe("larosa.co"); // y los datos del propio resultado viajan hasta la pantalla
     const revs = await db.select().from(duplicateReviews).where(eq(duplicateReviews.prospectId, o.prospectId));
     expect(revs[0].decision).toBe("excluded");
   });
@@ -52,8 +54,9 @@ describe("ingesta con deduplicación", () => {
     expect(o.message).toMatch(/Posible duplicado/);
   });
   it("prospecto nuevo queda como nuevo y con evidencias de lo observado", async () => {
-    const [o] = await ingestProspects(db, org, [raw({ name: "Tienda Zeta", phone: "310 555 0000", sourceId: "p3" })]);
+    const [o] = await ingestProspects(db, org, [raw({ name: "Tienda Zeta", phone: "310 555 0000", address: "Calle 9 # 8-7", sourceId: "p3" })]);
     expect(o.status).toBe("new");
+    expect(o).toMatchObject({ phone: "310 555 0000", address: "Calle 9 # 8-7" });
     const ev = await db.select().from(evidence).where(eq(evidence.entityId, o.prospectId));
     expect(ev.map((e) => e.field).sort()).toEqual(["name", "phone"]);
     expect(ev.every((e) => e.verification === "source_observed")).toBe(true);
