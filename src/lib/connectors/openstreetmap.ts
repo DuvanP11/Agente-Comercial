@@ -5,8 +5,8 @@ const NOMINATIM = "https://nominatim.openstreetmap.org/search";
 const OVERPASS_DEFAULT = "https://overpass-api.de/api/interpreter";
 const USER_AGENT = "pibox-commercial-intelligence/0.1 (hneira@picap.co)";
 /** Cada llamada externa tiene tope; la búsqueda completa también, para que Vercel nunca mate la función en silencio. */
-const REQUEST_TIMEOUT_MS = 25_000;
-const SEARCH_BUDGET_MS = 52_000;
+const REQUEST_TIMEOUT_MS = 18_000;
+const SEARCH_BUDGET_MS = 40_000; // deja margen para el respaldo y para guardar, dentro de maxDuration = 60
 const withTimeout = (signal?: AbortSignal) => (signal ? AbortSignal.any([signal, AbortSignal.timeout(REQUEST_TIMEOUT_MS)]) : AbortSignal.timeout(REQUEST_TIMEOUT_MS));
 const ATTRIBUTION = "Datos © colaboradores de OpenStreetMap (licencia ODbL). Completitud variable: pocos negocios traen teléfono o web.";
 
@@ -101,6 +101,24 @@ export class OpenStreetMapConnector implements Connector {
     throw new Error(`${lastError} (el servidor público de OpenStreetMap puede estar saturado; reintenta en unos minutos)`);
   }
 
+  /** Respaldo cuando Overpass no responde: búsqueda de texto de Nominatim (máx. 40, sin teléfono/web casi nunca). */
+  private async textFallback(category: string, place: string, signal?: AbortSignal): Promise<OsmElement[]> {
+    const url = `${NOMINATIM}?${new URLSearchParams({ q: `${safeTerm(category)}, ${place}`, format: "jsonv2", limit: "40", countrycodes: "co", extratags: "1", addressdetails: "1" })}`;
+    const res = await this.fetchImpl(url, { headers: { "User-Agent": USER_AGENT }, signal: withTimeout(signal) });
+    if (!res.ok) throw new Error(`Nominatim respondió ${res.status}`);
+    const rows = (await res.json()) as { osm_type?: string; osm_id?: number; name?: string; category?: string; extratags?: Record<string, string>; address?: Record<string, string> }[];
+    return rows
+      .filter((r) => r.osm_type && r.osm_id && r.name && ["shop", "amenity", "office", "craft"].includes(r.category ?? ""))
+      .map((r) => ({
+        type: r.osm_type!, id: r.osm_id!,
+        tags: {
+          name: r.name!, ...(r.extratags ?? {}),
+          ...(r.address?.road ? { "addr:street": r.address.road } : {}),
+          ...(r.address?.house_number ? { "addr:housenumber": r.address.house_number } : {}),
+        },
+      }));
+  }
+
   async search(criteria: SearchCriteria, signal?: AbortSignal): Promise<ConnectorResult> {
     const prospects: RawProspect[] = [];
     const errors: string[] = [];
@@ -123,8 +141,22 @@ export class OpenStreetMapConnector implements Connector {
         const box = bbox.join(",");
         const parts = filtersFor(category).map((f) => `nwr${f}(${box});`).join("");
         const query = `[out:json][timeout:20];(${parts});out center tags 400;`;
+        let els: OsmElement[] = [];
+        let usedFallback = false;
         try {
-          const els = await this.overpass(query, deadline, signal);
+          els = await this.overpass(query, deadline, signal);
+        } catch (e) {
+          const why = e instanceof Error ? e.message : String(e);
+          try {
+            els = await this.textFallback(category, place, signal);
+            usedFallback = true;
+            await this.sleep(1100);
+            errors.push(`"${category}" en ${place}: Overpass no respondió (${why}). Se usó el buscador de texto de OpenStreetMap: resultados menos completos y con nombres a veces genéricos.`);
+          } catch (e2) {
+            errors.push(`"${category}" en ${place}: ${why}. El respaldo tampoco respondió (${e2 instanceof Error ? e2.message : String(e2)}).`);
+          }
+        }
+        {
           for (const el of els) {
             const t = el.tags ?? {};
             const name = t.name?.trim();
@@ -138,10 +170,11 @@ export class OpenStreetMapConnector implements Connector {
               phone: t.phone ?? t["contact:phone"] ?? null, email: t.email ?? t["contact:email"] ?? null,
               address: t["addr:full"] ?? (street || null), city: criteria.city,
               sourceName: this.id, sourceId: key, sourceUrl: `https://www.openstreetmap.org/${el.type}/${el.id}`,
-              consultedAt: new Date(), isDemo: false, limitations: ATTRIBUTION,
+              consultedAt: new Date(), isDemo: false,
+              limitations: usedFallback ? `${ATTRIBUTION} Obtenido por búsqueda de texto (respaldo): el nombre puede coincidir con la categoría sin confirmar el tipo de negocio.` : ATTRIBUTION,
             });
           }
-        } catch (e) { errors.push(`"${category}" en ${place}: ${e instanceof Error ? e.message : String(e)}`); }
+        }
       }
     }
 

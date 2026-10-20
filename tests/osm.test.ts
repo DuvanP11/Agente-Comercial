@@ -60,6 +60,29 @@ describe("OpenStreetMapConnector", () => {
   });
 });
 
+describe("respaldo con búsqueda de texto", () => {
+  const row = (id: number, name: string, extra = {}) => ({ osm_type: "node", osm_id: id, name, category: "amenity", extratags: {}, address: { road: "Carrera 7" }, ...extra });
+  const mk = (rows: unknown[]) => (async (url: string) => {
+    const u = String(url);
+    if (u.includes("nominatim") && u.includes("limit=40")) return json(rows);
+    if (u.includes("nominatim")) return json([NOMINATIM_OK]);
+    return new Response("capacity", { status: 502 });
+  }) as unknown as typeof fetch;
+
+  it("si Overpass cae, usa Nominatim, lo avisa y marca la salvedad en cada dato", async () => {
+    const r = await new OpenStreetMapConnector(mk([row(1, "Droguería La 7", { extratags: { phone: "+57 1 555 0000" } }), row(2, "Parque", { category: "leisure" })]), ["u"], noSleep).search(criteria({ categories: ["droguería"] }));
+    expect(r.prospects.map((p) => p.name)).toEqual(["Droguería La 7"]); // el parque se descarta por tipo
+    expect(r.prospects[0]).toMatchObject({ phone: "+57 1 555 0000", address: "Carrera 7", sourceId: "osm:node/1" });
+    expect(r.prospects[0].limitations).toMatch(/respaldo/);
+    expect(r.errors[0]).toMatch(/Overpass no respondió.*buscador de texto/);
+  });
+  it("si también falla el respaldo, informa ambos errores y no inventa", async () => {
+    const f = (async (url: string) => (String(url).includes("limit=40") ? new Response("x", { status: 503 }) : String(url).includes("nominatim") ? json([NOMINATIM_OK]) : new Response("c", { status: 502 }))) as unknown as typeof fetch;
+    const r = await new OpenStreetMapConnector(f, ["u"], noSleep).search(criteria());
+    expect(r.prospects).toEqual([]); expect(r.errors[0]).toMatch(/respaldo tampoco respondió/);
+  });
+});
+
 describe("límites de tiempo", () => {
   it("un servidor que no responde produce un error legible, no un cuelgue", async () => {
     const f = (async (url: string, init?: RequestInit) => {
