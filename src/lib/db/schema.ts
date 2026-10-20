@@ -114,6 +114,8 @@ export const searches = pgTable("searches", {
   status: text("status").notNull(),
   error: text("error"),
   resultCount: integer("result_count").notNull().default(0),
+  /** Foto de lo que se mostró al usuario (mensaje, avisos y filas) para poder volver a ella desde una ficha. */
+  snapshot: jsonb("snapshot"),
   costUsd: numeric("cost_usd", { precision: 12, scale: 4 }),
   createdAt: ts("created_at"),
   finishedAt: timestamp("finished_at", { withTimezone: true }),

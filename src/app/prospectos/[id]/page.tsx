@@ -7,13 +7,18 @@ import { findContradictions } from "@/lib/evidence/types";
 import { duplicateMessage } from "@/lib/dedup/match";
 import { mailtoLink, mapSearchLink, safeWebUrl, telLink } from "@/lib/contact-links";
 import { CRITERION_LABELS, type ScoreResult } from "@/lib/scoring/score";
+import { SEARCH_ID } from "@/lib/services/searches";
 import { Composer } from "./Composer";
+import { ContactEditor } from "./ContactEditor";
 import { resolveDuplicate } from "./actions";
 
 export const dynamic = "force-dynamic";
 
-export default async function Ficha({ params }: { params: Promise<{ id: string }> }) {
+export default async function Ficha({ params, searchParams }: { params: Promise<{ id: string }>; searchParams: Promise<{ from?: string }> }) {
   const { id } = await params;
+  const { from } = await searchParams;
+  // Solo se acepta un id de búsqueda con formato válido (nunca una URL arbitraria).
+  const back = from && SEARCH_ID.test(from) ? { href: `/buscar?search=${from}`, label: "← Volver a la búsqueda" } : { href: "/prospectos", label: "← Volver a prospectos" };
   const db = await getDb();
   const [p] = await db.select().from(prospects).where(eq(prospects.id, id));
   if (!p) notFound();
@@ -36,6 +41,7 @@ export default async function Ficha({ params }: { params: Promise<{ id: string }
   return (
     <div className="space-y-5">
       <header>
+        <Link href={back.href} className="btn mb-2">{back.label}</Link>
         <h1 className="text-2xl font-bold">{p.name} {p.isDemo && <span className="badge badge-warn">Demo</span>}</h1>
         <p className="text-sm text-muted">{p.category} · {p.city} · fuente {p.sourceName} · consultado {p.consultedAt.toLocaleDateString("es-CO")}</p>
       </header>
@@ -64,6 +70,12 @@ export default async function Ficha({ params }: { params: Promise<{ id: string }
         <div><b>Correo:</b> {p.email ? (mailtoLink(p.email) ? <a className="break-all underline" href={mailtoLink(p.email)!}>{p.email}</a> : p.email) : "No encontrado"}</div>
       </section>
 
+      <section className="card" aria-label="Completar contacto">
+        <h2 className="mb-2 font-semibold">Completar contacto</h2>
+        <ContactEditor prospectId={id} phone={p.phone ?? ""} website={p.website ?? ""} email={p.email ?? ""}
+          googleUrl={`https://www.google.com/search?q=${encodeURIComponent([p.name, p.city, "teléfono contacto"].filter(Boolean).join(" "))}`} />
+      </section>
+
       <section className="card" aria-label="Calificación">
         <h2 className="mb-1 font-semibold">Calificación comercial</h2>
         {!score ? <p className="text-sm text-muted">Sin calificar. El agente de calificación (fase 5) aún no está implementado; no se asigna puntaje por defecto.</p> : (
@@ -82,7 +94,7 @@ export default async function Ficha({ params }: { params: Promise<{ id: string }
           <thead><tr><th>Campo</th><th>Valor observado</th><th>Fuente</th><th>Fecha</th><th>Estado</th></tr></thead>
           <tbody>{ev.map((e) => (
             <tr key={e.id}><td>{e.field}</td><td>{e.observedValue}</td>
-              <td>{/^https?:\/\//.test(e.sourceRef) ? <a className="underline" target="_blank" rel="noopener noreferrer" href={e.sourceRef}>{e.sourceName}</a> : e.sourceName}</td>
+              <td>{e.sourceName === "user_input" ? "ingresado por el usuario" : /^https?:\/\//.test(e.sourceRef) ? <a className="underline" target="_blank" rel="noopener noreferrer" href={e.sourceRef}>{e.sourceName}</a> : e.sourceName}</td>
               <td>{e.observedAt.toLocaleDateString("es-CO")}</td>
               <td><span className="badge">{{ source_observed: "observado en la fuente", format_valid: "solo formato válido", unverified: "sin verificar", user_confirmed: "confirmado por usuario" }[e.verification] ?? e.verification}</span></td></tr>
           ))}</tbody>

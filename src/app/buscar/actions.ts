@@ -5,10 +5,11 @@ import { searchCriteria } from "@/lib/connectors/types";
 import { ensureDefaultOrg, getDb } from "@/lib/db/client";
 import { searches } from "@/lib/db/schema";
 import { ingestProspects, type IngestOutcome } from "@/lib/services/prospects";
+import { saveSnapshot } from "@/lib/services/searches";
 
 export interface SearchState {
   status: "idle" | "ok" | "error";
-  message?: string; errors?: string[]; outcomes?: IngestOutcome[];
+  message?: string; errors?: string[]; outcomes?: IngestOutcome[]; searchId?: string;
 }
 
 const list = (v: FormDataEntryValue | null) => String(v ?? "").split(/[,\n]/).map((s) => s.trim()).filter(Boolean);
@@ -43,7 +44,9 @@ export async function runSearch(_: SearchState, fd: FormData): Promise<SearchSta
     const stored = outcomes.filter((o) => o.status !== "already_stored").length;
     const already = outcomes.length - stored;
     await db.update(searches).set({ status: "completed", resultCount: stored, finishedAt: new Date(), error: result.errors.join(" | ") || null }).where(eq(searches.id, s.id));
-    return { status: "ok", outcomes, errors: result.errors, message: `${result.prospects.length} resultados de ${connector.label}: ${stored} nuevos guardados${already ? `, ${already} ya estaban guardados de antes` : ""}.${connector.id === "openstreetmap" ? " Datos © colaboradores de OpenStreetMap (ODbL)." : ""}` };
+    const message = `${result.prospects.length} resultados de ${connector.label}: ${stored} nuevos guardados${already ? `, ${already} ya estaban guardados de antes` : ""}.${connector.id === "openstreetmap" ? " Datos © colaboradores de OpenStreetMap (ODbL)." : ""}`;
+    await saveSnapshot(db, s.id, { message, errors: result.errors, items: outcomes }); // para poder volver desde una ficha
+    return { status: "ok", outcomes, errors: result.errors, message, searchId: s.id };
   } catch (e) {
     // Nunca dejar que una excepción llegue como "Application error": se muestra la causa (sin cadenas de conexión).
     const msg = (e instanceof Error ? e.message : String(e)).replace(/postgres(ql)?:\/\/\S+/gi, "[conexión oculta]").slice(0, 400);

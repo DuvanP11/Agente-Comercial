@@ -20,16 +20,14 @@ export interface IngestOutcome {
   reasons?: unknown;
 }
 
-/**
- * Inserta prospectos de un conector comparándolos antes con clientes y prospectos previos.
- * - Coincidencia exacta  → se guarda con estado excluded_duplicate (queda el rastro, no se pierde).
- * - Coincidencia probable → needs_review; NO se fusiona nada automáticamente.
- */
-export async function ingestProspects(db: Db, orgId: string, raws: RawProspect[], searchId?: string): Promise<IngestOutcome[]> {
+export type Reference = CompanyRecord & { refType: "client" | "prospect" };
+
+/** Clientes y prospectos contra los que se compara cualquier candidato. */
+export async function loadReferences(db: Db, orgId: string): Promise<Reference[]> {
   const clientRows = await db.select().from(clients).where(and(eq(clients.orgId, orgId), isNull(clients.archivedAt)));
   const prospectRows = await db.select().from(prospects).where(eq(prospects.orgId, orgId));
 
-  const refs: (CompanyRecord & { refType: "client" | "prospect" })[] = [
+  return [
     ...clientRows.map((c) => ({
       refType: "client" as const, id: c.id, origin: "existing_client" as const, name: c.name, legalName: c.legalName,
       nit: c.nit, website: c.website, phone: c.phone, email: c.email, address: c.address, city: c.city,
@@ -41,6 +39,15 @@ export async function ingestProspects(db: Db, orgId: string, raws: RawProspect[]
     })),
   ];
 
+}
+
+/**
+ * Inserta prospectos de un conector comparándolos antes con clientes y prospectos previos.
+ * - Coincidencia exacta  → se guarda con estado excluded_duplicate (queda el rastro, no se pierde).
+ * - Coincidencia probable → needs_review; NO se fusiona nada automáticamente.
+ */
+export async function ingestProspects(db: Db, orgId: string, raws: RawProspect[], searchId?: string): Promise<IngestOutcome[]> {
+  const refs = await loadReferences(db, orgId);
   const outcomes: IngestOutcome[] = [];
   const shown = (raw: RawProspect) => ({ category: raw.category, address: raw.address, phone: raw.phone, website: raw.website, email: raw.email, sourceUrl: raw.sourceUrl });
   for (const raw of raws) {

@@ -4,6 +4,7 @@ import { eq } from "drizzle-orm";
 import { ensureDefaultOrg, getDb } from "@/lib/db/client";
 import { activities, messages, prospects } from "@/lib/db/schema";
 import { resolveReview } from "@/lib/services/prospects";
+import { updateContact } from "@/lib/services/prospect-contact";
 import { whatsappLink } from "@/lib/contact-links";
 
 export async function resolveDuplicate(reviewId: string, decision: "excluded" | "linked" | "not_duplicate", prospectId: string) {
@@ -24,4 +25,19 @@ export async function openWhatsApp(prospectId: string, body: string): Promise<{ 
   await db.insert(activities).values({ orgId: org, prospectId, type: "whatsapp_opened", actor: "usuario", detail: { messageId: m.id, note: "Se abrió el chat; el envío lo hace el usuario." } });
   revalidatePath(`/prospectos/${prospectId}`);
   return { url };
+}
+
+export interface ContactState { error?: string; ok?: string; warnings?: string[] }
+
+export async function saveContact(prospectId: string, _: ContactState, fd: FormData): Promise<ContactState> {
+  try {
+    const db = await getDb();
+    const r = await updateContact(db, await ensureDefaultOrg(db), prospectId, {
+      phone: String(fd.get("phone") ?? ""), website: String(fd.get("website") ?? ""), email: String(fd.get("email") ?? ""),
+    }, "usuario");
+    revalidatePath(`/prospectos/${prospectId}`);
+    return { ok: r.changed.length ? `Guardado (${r.changed.join(", ")}). Quedó registrado como dato ingresado por ti.` : "No hubo cambios.", warnings: r.warnings };
+  } catch (e) {
+    return { error: e instanceof Error ? e.message : "No se pudo guardar." };
+  }
 }
