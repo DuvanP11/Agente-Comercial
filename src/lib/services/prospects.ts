@@ -61,7 +61,7 @@ export async function ingestProspects(db: Db, orgId: string, raws: RawProspect[]
     await db.insert(evidence).values(observed.map(([field, value]) => ({
       orgId, entityType: "prospect", entityId: row.id, field, observedValue: value!, sourceRef: ref,
       sourceName: raw.sourceName, method: raw.method ?? "api", observedAt: raw.consultedAt, verification: "source_observed",
-      limitations: raw.isDemo ? "Dato de demostración" : raw.method === "csv_import" ? "Dato tomado de un archivo cargado por el usuario; no verificado de forma independiente." : "Dato publicado por la fuente; no verificado de forma independiente.",
+      limitations: raw.limitations ?? (raw.isDemo ? "Dato de demostración" : raw.method === "csv_import" ? "Dato tomado de un archivo cargado por el usuario; no verificado de forma independiente." : "Dato publicado por la fuente; no verificado de forma independiente."),
     })));
 
     // Los siguientes elementos del mismo lote también se comparan contra este.

@@ -26,6 +26,8 @@ export interface RawProspect {
   isDemo: boolean;
   /** Cómo se obtuvo el dato; por defecto 'api'. */
   method?: "api" | "csv_import";
+  /** Salvedad propia de la fuente (atribución, calidad). Si falta, se usa la genérica. */
+  limitations?: string;
 }
 
 export type ConnectorStatus =

@@ -1,9 +1,10 @@
 import type { Connector } from "./types";
 import { GooglePlacesConnector } from "./google-places";
+import { OpenStreetMapConnector } from "./openstreetmap";
 
 /** Conectores implementados. Los demás (LinkedIn, directorios, web) están pendientes y se listan en Integraciones. */
 export function getConnectors(): Connector[] {
-  return [new GooglePlacesConnector()];
+  return [new OpenStreetMapConnector(), new GooglePlacesConnector()];
 }
 
 export const PENDING_CONNECTORS = [

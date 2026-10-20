@@ -39,7 +39,7 @@ export async function runSearch(_: SearchState, fd: FormData): Promise<SearchSta
     const result = await connector.search(parsed.data);
     const outcomes = await ingestProspects(db, org, result.prospects, s.id);
     await db.update(searches).set({ status: "completed", resultCount: outcomes.length, finishedAt: new Date(), error: result.errors.join(" | ") || null }).where(eq(searches.id, s.id));
-    return { status: "ok", outcomes, errors: result.errors, message: `${result.prospects.length} resultados de ${connector.label}; ${outcomes.length} nuevos registros guardados.` };
+    return { status: "ok", outcomes, errors: result.errors, message: `${result.prospects.length} resultados de ${connector.label}; ${outcomes.length} nuevos registros guardados.${connector.id === "openstreetmap" ? " Datos © colaboradores de OpenStreetMap (ODbL)." : ""}` };
   } catch (e) {
     const msg = e instanceof Error ? e.message : String(e);
     await db.update(searches).set({ status: "failed", error: msg, finishedAt: new Date() }).where(eq(searches.id, s.id));
