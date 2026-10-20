@@ -157,3 +157,61 @@ describe("campañas con base de datos", () => {
     expect(c.total).toBe(3); expect(c.funnel.won).toBe(1);
   });
 });
+
+import { approachFor, captarCandidates, startCaptation } from "@/lib/services/captar";
+import { saveAssessment, setQualification } from "@/lib/services/analysis";
+import { evidence as evidenceTable } from "@/lib/db/schema";
+
+describe("captar clientes", () => {
+  let db: Db, org: string, ids: Record<string, string>;
+  beforeAll(async () => {
+    db = await createPgliteDb(); org = await ensureDefaultOrg(db);
+    const out = await ingestProspects(db, org, [
+      raw({ name: "Glam House", category: "cosmética", phone: "3107778899", sourceId: "1" }),
+      raw({ name: "Natural Beauty", category: "cosmética", sourceId: "2" }),
+      raw({ name: "Moda Norte Ltda", category: "ropa", phone: "3201112222", sourceId: "3" }),
+      raw({ name: "Natural Beauty Dos", category: "cosmética", sourceId: "4" }),
+    ]);
+    ids = Object.fromEntries(out.map((o) => [o.name, o.prospectId]));
+    const ev = (await db.select().from(evidenceTable).where(eq(evidenceTable.entityId, ids["Glam House"])))[0].id;
+    await saveAssessment(db, org, ids["Glam House"], {
+      icp_fit: { value: 1, kind: "confirmed", evidenceIds: [ev] }, logistics_need: { value: 0.8, kind: "inferred", evidenceIds: [] }, delivery_volume: { value: 0.5, kind: "hypothesis", evidenceIds: [] },
+    }, "t");
+    await setQualification(db, org, ids["Glam House"], true, "t");
+  });
+
+  it("ordena: calificados primero y luego por contacto; excluye no contactar y duplicados", async () => {
+    await setDoNotContact(db, org, ids["Natural Beauty Dos"], true, null, "t");
+    const c = await captarCandidates(db, org);
+    expect(c[0].p.name).toBe("Glam House"); // calificado
+    expect(c.map((x) => x.p.name)).not.toContain("Natural Beauty Dos");
+    expect(c.findIndex((x) => x.p.name === "Moda Norte Ltda")).toBeLessThan(c.findIndex((x) => x.p.name === "Natural Beauty")); // con teléfono antes
+  });
+  it("inicia captación con campaña nueva y exige nombre", async () => {
+    await expect(startCaptation(db, org, { prospectIds: [ids["Glam House"]] }, "t")).rejects.toThrow(/Ponle un nombre/);
+    await expect(startCaptation(db, org, { prospectIds: [], newName: "X campaña" }, "t")).rejects.toThrow(/al menos un prospecto/);
+    const r = await startCaptation(db, org, { prospectIds: [ids["Glam House"], ids["Moda Norte Ltda"]], newName: "Captación octubre" }, "t");
+    expect(r.added).toBe(2);
+    const d = await campaignDetail(db, org, r.campaignId);
+    expect(d.campaign.template).toContain("{empresa}"); expect(d.items).toHaveLength(2);
+  });
+  it("los prospectos ya en una campaña activa dejan de ser candidatos", async () => {
+    const c = await captarCandidates(db, org);
+    expect(c.map((x) => x.p.name)).toEqual(["Natural Beauty"]);
+  });
+  it("puede sumar a una campaña existente, y no a una cerrada ni a una inexistente", async () => {
+    const camp = (await listCampaigns(db, org))[0];
+    expect((await startCaptation(db, org, { prospectIds: [ids["Natural Beauty"]], campaignId: camp.id }, "t")).added).toBe(1);
+    await expect(startCaptation(db, org, { prospectIds: [ids["Natural Beauty"]], campaignId: "00000000-0000-0000-0000-000000000000" }, "t")).rejects.toThrow(/no existe o está cerrada/);
+  });
+  it("plan de acercamiento con datos reales: sabe lo que hay, declara lo que falta y refleja el historial", async () => {
+    const { approach, score } = await approachFor(db, org, ids["Glam House"]);
+    expect(score!.priority).not.toBeNull();
+    expect(approach.sector).toBe("belleza");
+    expect(approach.known.join(" ")).toContain("3107778899");
+    expect(approach.known.join(" ")).not.toMatch(/Sitio web/);
+    expect(approach.toVerify.join(" ")).toMatch(/desconocido/); // criterios sin valorar
+    expect(approach.nextAction.code).toBe("add_to_campaign");
+    await expect(approachFor(db, org, "00000000-0000-0000-0000-000000000000")).rejects.toThrow(/no encontrado/);
+  });
+});

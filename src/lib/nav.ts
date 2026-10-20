@@ -9,7 +9,7 @@ export const NAV: NavItem[] = [
   { slug: "buscar", label: "Buscar clientes", href: "/buscar", status: "partial", phase: "5", note: "Google Places listo (requiere clave). LinkedIn, directorios y web pendientes." },
   { slug: "importar", label: "Importar prospectos", href: "/importar", status: "ready", phase: "5" },
   { slug: "analizar", label: "Analizar clientes", href: "/analizar", status: "partial", phase: "5", note: "Valoración manual con evidencias. La propuesta automática con IA está pendiente." },
-  { slug: "captar", label: "Captar clientes", href: "/m/captar", status: "pending", phase: "6" },
+  { slug: "captar", label: "Captar clientes", href: "/captar", status: "partial", phase: "6", note: "Selección, plan de acercamiento (reglas, sin IA) y envío a campaña. Redacción con IA y negociación de precios: pendientes." },
   { slug: "prospectos", label: "Base de prospectos", href: "/prospectos", status: "ready", phase: "3" },
   { slug: "clientes", label: "Clientes existentes", href: "/clientes", status: "ready", phase: "3" },
   { slug: "campanas", label: "Campañas comerciales", href: "/campanas", status: "partial", phase: "6", note: "Mensajes por plantilla con aprobación, seguimientos y no-contactar. Redacción con IA y correo: pendientes." },
