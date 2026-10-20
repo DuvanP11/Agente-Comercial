@@ -58,7 +58,7 @@ describe("ingesta con deduplicación", () => {
     expect(o.status).toBe("new");
     expect(o).toMatchObject({ phone: "310 555 0000", address: "Calle 9 # 8-7" });
     const ev = await db.select().from(evidence).where(eq(evidence.entityId, o.prospectId));
-    expect(ev.map((e) => e.field).sort()).toEqual(["name", "phone"]);
+    expect(ev.map((e) => e.field).sort()).toEqual(["address", "name", "phone"]);
     expect(ev.every((e) => e.verification === "source_observed")).toBe(true);
   });
   it("el mismo id de fuente no se guarda dos veces", async () => {
