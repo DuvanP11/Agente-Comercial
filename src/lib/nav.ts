@@ -7,6 +7,7 @@ export interface NavItem {
 export const NAV: NavItem[] = [
   { slug: "dashboard", label: "Dashboard gerencial", href: "/", status: "partial", phase: "9", note: "Conteos reales de la base; metas y finanzas pendientes." },
   { slug: "buscar", label: "Buscar clientes", href: "/buscar", status: "partial", phase: "5", note: "Google Places listo (requiere clave). LinkedIn, directorios y web pendientes." },
+  { slug: "importar", label: "Importar prospectos", href: "/importar", status: "ready", phase: "5" },
   { slug: "analizar", label: "Analizar clientes", href: "/analizar", status: "partial", phase: "5", note: "Valoración manual con evidencias. La propuesta automática con IA está pendiente." },
   { slug: "captar", label: "Captar clientes", href: "/m/captar", status: "pending", phase: "6" },
   { slug: "prospectos", label: "Base de prospectos", href: "/prospectos", status: "ready", phase: "3" },

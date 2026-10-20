@@ -83,3 +83,20 @@ describe("análisis manual", () => {
     await expect(saveAssessment(db, org, dup.id, { icp_fit: ok }, "t")).rejects.toThrow(/duplicado/);
   });
 });
+
+import { previewProspects, suggestProspectMapping, toRawProspects } from "@/lib/services/prospect-import";
+import { parseTable } from "@/lib/services/tabular";
+
+describe("importar prospectos desde archivo", () => {
+  it("mapea, valida, ingesta con evidencia de método csv_import y detecta duplicados", async () => {
+    const csv = "Empresa,Sector,Teléfono,Sitio web\nTornillos del Norte,ferretería,310 777 8899,tornillosnorte.co\n,sin nombre,,\nTornillos Norte SAS,ferretería,+57 310 777 8899,";
+    const table = await parseTable("lista.csv", new TextEncoder().encode(csv).buffer as ArrayBuffer);
+    const preview = previewProspects(table.rows, suggestProspectMapping(table.headers));
+    expect(preview.filter((p) => p.errors.length)).toHaveLength(1);
+    const out = await ingestProspects(db, org, toRawProspects(preview, "lista.csv"));
+    expect(out.map((o) => o.status)).toEqual(["new", "excluded_duplicate"]); // el 2º coincide por teléfono
+    const ev = await db.select().from(evidence).where(eq(evidence.entityId, out[0].prospectId));
+    expect(ev.every((e) => e.method === "csv_import" && e.verification === "source_observed")).toBe(true);
+    expect(ev.find((e) => e.field === "name")!.limitations).toMatch(/archivo cargado/);
+  });
+});

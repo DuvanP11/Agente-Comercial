@@ -24,6 +24,8 @@ export interface RawProspect {
   sourceUrl: string | null;
   consultedAt: Date;
   isDemo: boolean;
+  /** Cómo se obtuvo el dato; por defecto 'api'. */
+  method?: "api" | "csv_import";
 }
 
 export type ConnectorStatus =
