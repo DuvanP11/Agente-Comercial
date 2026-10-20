@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { mailtoLink, safeWebUrl, telLink } from "@/lib/contact-links";
+import { mailtoLink, phoneLinks, safeWebUrl, telLink } from "@/lib/contact-links";
 
 describe("enlaces de contacto", () => {
   it("web: agrega https y acepta http/https", () => {
@@ -31,5 +31,14 @@ describe("navegación", () => {
   it("no hay rutas ni slugs repetidos", () => {
     expect(new Set(NAV.map((n) => n.href)).size).toBe(NAV.length);
     expect(new Set(NAV.map((n) => n.slug)).size).toBe(NAV.length);
+  });
+});
+
+
+describe("enlaces para varios teléfonos", () => {
+  it("un enlace por número, y los que no son números van sin enlace", () => {
+    expect(phoneLinks("+57 601 5471740;+57 601 5471744")).toEqual([{ text: "+57 601 5471740", href: "tel:+576015471740" }, { text: "+57 601 5471744", href: "tel:+576015471744" }]);
+    expect(phoneLinks("310 555 0000 / llamar a gerencia")[1]).toEqual({ text: "llamar a gerencia", href: null });
+    expect(phoneLinks(null)).toEqual([]);
   });
 });

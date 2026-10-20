@@ -2,7 +2,7 @@
 import { useState, useTransition } from "react";
 import Link from "next/link";
 import { CP_STATUSES, CP_STATUS_KEYS } from "@/lib/campaigns";
-import { telLink } from "@/lib/contact-links";
+import { phoneLinks } from "@/lib/contact-links";
 import {
   aiDraftAction, approveAction, doNotContactAction, draftAction, followUpAction, generateAction, statusAction, whatsappAction, type ActionResult,
 } from "../actions";
@@ -34,7 +34,7 @@ export function ProspectRow(props: RowProps) {
       <div className="flex flex-wrap items-center gap-2">
         <Link className="font-semibold underline" href={`/prospectos/${p.id}`}>{p.name}</Link>
         <span className="text-sm text-muted">{p.city}</span>
-        {p.phone ? <a className="text-sm underline" href={telLink(p.phone) ?? undefined}>{p.phone}</a> : <span className="text-sm badge-warn">Sin teléfono (complétalo en su ficha)</span>}
+        {p.phone ? phoneLinks(p.phone).map((x, i) => x.href ? <a key={i} className="text-sm underline" href={x.href}>{x.text}</a> : <span key={i} className="text-sm">{x.text}</span>) : <span className="text-sm badge-warn">Sin teléfono (complétalo en su ficha)</span>}
         {p.doNotContact && <span className="badge badge-bad">NO CONTACTAR</span>}
         {FU[props.followUp] && <span className={`badge ${FU[props.followUp][1]}`}>{FU[props.followUp][0]}</span>}
         {props.opens > 0 && <span className="badge">WhatsApp abierto {props.opens}×</span>}

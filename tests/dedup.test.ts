@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { duplicateMessage, findDuplicates, type CompanyRecord } from "@/lib/dedup/match";
-import { normalizeDomain, normalizeName, normalizeNit, normalizePhone } from "@/lib/dedup/normalize";
+import { allPhonesValid, normalizeDomain, normalizeName, normalizeNit, normalizePhone, normalizePhones, splitPhones } from "@/lib/dedup/normalize";
 
 const ref = (o: Partial<CompanyRecord> & { id: string }): CompanyRecord =>
   ({ origin: "existing_client", name: "Ref", ...o });
@@ -82,5 +82,37 @@ describe("deduplicación", () => {
     expect(duplicateMessage("exact", "client")).toMatch(/cliente ya está registrado/);
     expect(duplicateMessage("exact", "prospect")).toMatch(/prospecto ya existe/);
     expect(duplicateMessage("probable", "client")).toMatch(/Posible duplicado/);
+  });
+});
+
+
+describe("varios teléfonos en un mismo campo (caso real de OpenStreetMap: «+57 601 5471740;+57 601 5471744»)", () => {
+  it("separa por ; / | , y salto de línea", () => {
+    expect(splitPhones("601 5471740; 310 555 0000")).toEqual(["601 5471740", "310 555 0000"]);
+    expect(splitPhones("601 5471740 / 3105550000")).toEqual(["601 5471740", "3105550000"]);
+    expect(splitPhones("3105550000, 3205551111")).toEqual(["3105550000", "3205551111"]);
+    expect(splitPhones("3105550000\n3205551111")).toHaveLength(2);
+    expect(splitPhones(null)).toEqual([]); expect(splitPhones("  ")).toEqual([]);
+  });
+  it("el caso real: ambos números válidos y el primero es el principal", () => {
+    expect(normalizePhones("+57 601 5471740;+57 601 5471744")).toEqual(["+576015471740", "+576015471744"]);
+    expect(normalizePhone("+57 601 5471740;+57 601 5471744")).toBe("+576015471740");
+  });
+  it("descarta los inválidos y los repetidos sin perder los buenos", () => {
+    expect(normalizePhones("123; 310 555 0000; 3105550000")).toEqual(["+573105550000"]);
+    expect(normalizePhone("abc")).toBe("");
+  });
+  it("un número solo sigue funcionando igual que antes", () => { expect(normalizePhone("300 123 4567")).toBe("+573001234567"); });
+  it("allPhonesValid exige que TODOS sean válidos (para lo que escribe el usuario)", () => {
+    expect(allPhonesValid("310 555 0000; 601 5471740")).toBe(true);
+    expect(allPhonesValid("310 555 0000; 123")).toBe(false);
+    expect(allPhonesValid("")).toBe(false);
+  });
+  it("dedup: coincide si COMPARTEN algún teléfono, aunque tengan otros distintos", () => {
+    const m = findDuplicates(cand({ name: "A", phone: "601 5471740; 3105550000" }), [ref({ id: "1", name: "B", phone: "3201112222; +57 310 555 0000" })]);
+    expect(m[0].level).toBe("exact"); expect(m[0].reasons[0]).toMatchObject({ field: "phone", candidateValue: "+573105550000" });
+  });
+  it("dedup: sin números en común no coinciden", () => {
+    expect(findDuplicates(cand({ name: "A", phone: "601 5471740; 3105550000" }), [ref({ id: "1", name: "B", phone: "3201112222; 3001234567" })])).toHaveLength(0);
   });
 });

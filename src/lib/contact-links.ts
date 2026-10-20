@@ -33,3 +33,9 @@ export function telLink(value: string | null | undefined): string | null {
   const d = (value ?? "").replace(/[^\d+]/g, "");
   return /^\+?\d{7,15}$/.test(d) ? `tel:${d}` : null;
 }
+
+
+/** Un enlace tel: por cada número del campo (el campo puede traer varios separados por ; / ,). Los que no son números válidos van sin enlace. */
+export function phoneLinks(value: string | null | undefined): { text: string; href: string | null }[] {
+  return (value ?? "").split(/[;/|\n]|,(?=\s*\+?\d)/).map((t) => t.trim()).filter(Boolean).map((text) => ({ text, href: telLink(text) }));
+}

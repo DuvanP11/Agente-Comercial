@@ -32,7 +32,9 @@ export function SearchForm({ sources, restored, aiReady = false }: { sources: So
   const [aiPending, startAi] = useTransition();
   const interpret = () => startAi(async () => {
     const r = await interpretAction(brief);
-    setAi(r);
+    // Si tu texto no menciona ciudad, el campo conserva la que ya tenía: el aviso debe decirlo.
+    const noCity = r.ok && !r.output?.city;
+    setAi(noCity ? { ...r, warnings: [...r.warnings.filter((w) => !w.startsWith("No se detectó la ciudad")), city.trim() ? `Tu texto no menciona ciudad: se conservó «${city.trim()}», la que ya estaba en el formulario. Cámbiala si no es esa.` : "Tu texto no menciona ciudad: complétala a mano."] } : r);
     if (r.ok && r.output) {
       // Solo se llenan los campos para que los revises; no se busca nada todavía.
       if (r.output.city) setCity(r.output.city);
@@ -64,7 +66,14 @@ export function SearchForm({ sources, restored, aiReady = false }: { sources: So
             <span className="text-xs text-muted">{aiReady ? "Llena los campos de abajo a partir de tu descripción. Revísalos antes de buscar." : "IA no configurada: completa los campos a mano (ver Agentes y skills)."}</span>
           </div>
           {ai && !ai.ok && <p role="alert" className="mt-1 text-sm badge-bad">{ai.error}</p>}
-          {ai?.ok && <div role="status" className="mt-1 text-sm"><p className="badge-ok">Campos llenados desde tu descripción. Revísalos antes de buscar.</p>
+          {ai?.ok && <div role="status" className="mt-1 text-sm"><p className="badge-ok">La IA respondió. Esto es lo que entendió de tu descripción; revísalo antes de buscar:</p>
+            <ul className="my-1 list-disc pl-5">
+              <li>Ciudad: {ai.output?.city ? <b>{ai.output.city}</b> : <span className="text-muted">no la mencionaste</span>}</li>
+              <li>Zonas: {ai.output?.zones.length ? <b>{ai.output.zones.join(", ")}</b> : <span className="text-muted">ninguna mencionada</span>}</li>
+              <li>Rubros: {ai.output?.categories.length ? <b>{ai.output.categories.join(", ")}</b> : <span className="text-muted">ninguno</span>}</li>
+              <li>Máximo de resultados: {ai.output?.maxResults != null ? <b>{ai.output.maxResults}</b> : <span className="text-muted">no indicado (se mantiene el actual)</span>}</li>
+            </ul>
+            <p className="text-xs text-muted">Mientras más detalle des (ciudad, zonas, tipos de negocio), más campos podrá llenar. Ej.: «tiendas de cosméticos y ropa en Chapinero y Usaquén, Bogotá, máximo 15».</p>
             {ai.warnings.map((w) => <p key={w} className="badge-warn">⚠ {w}</p>)}{ai.output?.notes && <p className="text-muted">Nota del modelo: {ai.output.notes}</p>}</div>}
         </div>
         <div><label className="label" htmlFor="city">Ciudad *</label><input id="city" name="city" required className="input" value={city} onChange={(e) => setCity(e.target.value)} /></div>

@@ -31,6 +31,14 @@ describe("completar contacto a mano", () => {
     expect(ev.every((e) => e.verification === "user_confirmed" && /manualmente/.test(e.limitations!))).toBe(true);
     expect((await db.select().from(auditLog).where(eq(auditLog.action, "prospect.contact_updated"))).length).toBe(1);
   });
+  it("acepta varios teléfonos si TODOS son válidos y usa el primero para WhatsApp y dedup", async () => {
+    const r = await updateContact(db, org, a, { phone: "601 5471740; 310 555 7777" }, "t");
+    expect(r.changed).toContain("phone");
+    const [p] = await db.select().from(prospects).where(eq(prospects.id, a));
+    expect(p.phone).toBe("601 5471740; 310 555 7777"); expect(p.phoneKey).toBe("+576015471740");
+    await expect(updateContact(db, org, a, { phone: "601 5471740; 123" }, "t")).rejects.toThrow(/Teléfono no reconocido.*sepáralos con/);
+    await updateContact(db, org, a, { phone: "310 777 8899" }, "t"); // deja el estado como lo esperan las pruebas siguientes
+  });
   it("rechaza datos inválidos sin tocar nada", async () => {
     await expect(updateContact(db, org, a, { phone: "123" }, "t")).rejects.toThrow(/Teléfono no reconocido/);
     await expect(updateContact(db, org, a, { website: "javascript:alert(1)" }, "t")).rejects.toThrow(/web no es válida/);

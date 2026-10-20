@@ -1,5 +1,5 @@
 import Link from "next/link";
-import { mailtoLink, safeWebUrl, telLink } from "@/lib/contact-links";
+import { mailtoLink, phoneLinks, safeWebUrl } from "@/lib/contact-links";
 import type { IngestOutcome } from "@/lib/services/prospects";
 
 const BADGE: Record<string, string> = { new: "badge-ok", excluded_duplicate: "badge-bad", needs_review: "badge-warn", already_stored: "", qualified: "badge-ok", contacted: "", archived: "" };
@@ -20,7 +20,7 @@ export function OutcomeTable({ outcomes, searchId }: { outcomes: IngestOutcome[]
             <td><b>{o.name}</b>{o.category && <div className="text-xs text-muted">{o.category}</div>}
               <Link className="text-xs underline" href={ficha(o.prospectId)}>Ver ficha</Link></td>
             <td>{o.address ?? <Dash />}</td>
-            <td>{o.phone ? (telLink(o.phone) ? <a className="underline" href={telLink(o.phone)!}>{o.phone}</a> : o.phone) : <Dash />}</td>
+            <td>{o.phone ? phoneLinks(o.phone).map((p, i) => <div key={i}>{p.href ? <a className="underline" href={p.href}>{p.text}</a> : p.text}</div>) : <Dash />}</td>
             <td>{o.website || o.email ? <>
               {o.website && (safeWebUrl(o.website) ? <a className="break-all underline" target="_blank" rel="noopener noreferrer" href={safeWebUrl(o.website)!}>{o.website}</a> : <span className="break-all">{o.website}</span>)}
               {o.website && o.email ? <br /> : null}

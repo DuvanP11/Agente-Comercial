@@ -1,7 +1,7 @@
 "use client";
 import Link from "next/link";
 import { useActionState, useMemo, useState } from "react";
-import { mailtoLink, safeWebUrl, telLink } from "@/lib/contact-links";
+import { mailtoLink, phoneLinks, safeWebUrl } from "@/lib/contact-links";
 import { startCaptationAction, type CaptarState } from "./actions";
 
 export interface Candidate {
@@ -36,7 +36,7 @@ export function CaptarPicker({ candidates, campaigns }: { candidates: Candidate[
         <table className="table">
           <thead><tr><th><span className="sr-only">Elegir</span></th><th>Prospecto</th><th>Calificación</th><th>Contacto</th><th>Plan</th></tr></thead>
           <tbody>{shown.map((c) => {
-            const web = safeWebUrl(c.website), mail = mailtoLink(c.email), tel = telLink(c.phone);
+            const web = safeWebUrl(c.website), mail = mailtoLink(c.email), tels = phoneLinks(c.phone).filter((x) => x.href);
             return (
               <tr key={c.id}>
                 <td><input type="checkbox" name="prospect" value={c.id} checked={picked.has(c.id)} onChange={() => toggle(c.id)} aria-label={`Elegir ${c.name}`} /></td>
@@ -44,7 +44,7 @@ export function CaptarPicker({ candidates, campaigns }: { candidates: Candidate[
                 <td>{c.status === "qualified" && <span className="badge badge-ok">Calificado</span>}{" "}
                   {c.priority !== null ? <span className="text-sm">Prioridad {c.priority}</span> : c.coverage === null ? <span className="text-sm text-muted">Sin valorar</span> : <span className="text-sm text-muted">Info. insuficiente</span>}</td>
                 <td className="text-sm">
-                  {tel ? <a className="underline" href={tel}>{c.phone}</a> : <span className="badge badge-warn">sin teléfono</span>}
+                  {tels.length ? tels.map((x, i) => <span key={i}>{i > 0 && " · "}<a className="underline" href={x.href!}>{x.text}</a></span>) : <span className="badge badge-warn">sin teléfono</span>}
                   {web && <> · <a className="underline" target="_blank" rel="noopener noreferrer" href={web}>web</a></>}
                   {mail && <> · <a className="underline" href={mail}>correo</a></>}
                 </td>

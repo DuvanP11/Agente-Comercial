@@ -1,6 +1,6 @@
 import {
   FREE_MAIL_DOMAINS, normalizeAddress, normalizeDomain, normalizeEmail,
-  normalizeName, normalizeNit, normalizePhone,
+  normalizeName, normalizeNit, normalizePhones,
 } from "./normalize";
 
 export interface CompanyRecord {
@@ -75,8 +75,10 @@ export function compareRecords(candidate: CompanyRecord, ref: CompanyRecord): Du
   const cDom = normalizeDomain(candidate.website), rDom = normalizeDomain(ref.website);
   if (cDom && cDom === rDom) push("domain", cDom, rDom);
 
-  const cPhone = normalizePhone(candidate.phone), rPhone = normalizePhone(ref.phone);
-  if (cPhone && cPhone === rPhone) push("phone", cPhone, rPhone);
+  // Un negocio puede tener varios teléfonos: coincide si comparten alguno.
+  const rPhones = normalizePhones(ref.phone);
+  const sharedPhone = normalizePhones(candidate.phone).find((p) => rPhones.includes(p));
+  if (sharedPhone) push("phone", sharedPhone, sharedPhone);
 
   const cMail = normalizeEmail(candidate.email), rMail = normalizeEmail(ref.email);
   const mailDomain = cMail.split("@")[1];

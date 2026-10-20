@@ -33,7 +33,12 @@ async function init(): Promise<Db> {
 }
 
 export function getDb(): Promise<Db> {
-  return (g.__db ??= init());
+  return (g.__db ??= init().then(async (db) => {
+    // Mantenimiento ligero y seguro (solo claves vacías); un fallo aquí nunca debe tumbar la aplicación.
+    try { const { backfillPhoneKeys } = await import("../services/maintenance"); await backfillPhoneKeys(db); }
+    catch (e) { console.error("backfillPhoneKeys falló:", e); }
+    return db;
+  }));
 }
 
 /** Organización única de desarrollo hasta que exista multi-organización con autenticación. */

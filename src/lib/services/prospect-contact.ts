@@ -1,6 +1,6 @@
 import { and, eq } from "drizzle-orm";
 import { findDuplicates } from "../dedup/match";
-import { normalizeDomain, normalizeEmail, normalizePhone } from "../dedup/normalize";
+import { allPhonesValid, normalizeDomain, normalizeEmail, normalizePhone } from "../dedup/normalize";
 import { safeWebUrl } from "../contact-links";
 import type { Db } from "../db/client";
 import { auditLog, evidence, prospects } from "../db/schema";
@@ -24,7 +24,7 @@ export async function updateContact(db: Db, orgId: string, prospectId: string, i
   const website = (input.website ?? p.website ?? "").trim();
   const email = (input.email ?? p.email ?? "").trim();
 
-  if (phone && !normalizePhone(phone)) throw new Error("Teléfono no reconocido. Usa un número colombiano, p. ej. 310 123 4567 o 601 555 1234.");
+  if (phone && !allPhonesValid(phone)) throw new Error("Teléfono no reconocido. Usa números colombianos, p. ej. 310 123 4567 o 601 555 1234 (si son varios, sepáralos con «;»).");
   if (website && !safeWebUrl(website)) throw new Error("La web no es válida. Usa una dirección como https://tienda.com o tienda.com.");
   if (email && !normalizeEmail(email)) throw new Error("El correo no tiene un formato válido.");
 

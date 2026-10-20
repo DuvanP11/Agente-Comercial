@@ -38,11 +38,31 @@ export function normalizeDomain(input: string | null | undefined): string {
   return /^[a-z0-9-]+(\.[a-z0-9-]+)+$/.test(v) ? v : "";
 }
 
-/** Teléfono en E.164. Asume Colombia si no trae prefijo. Solo valida formato, no que exista. */
+/** Separa un campo con varios teléfonos ("601 555 1234; 310 555 0000", "a / b", "a, b"). */
+export function splitPhones(phone: string | null | undefined): string[] {
+  if (!phone) return [];
+  return [...new Set(phone.split(/[;/|\n]|,(?=\s*\+?\d)/).map((p) => p.trim()).filter(Boolean))];
+}
+
+/** Todos los teléfonos válidos de un campo, en E.164 y sin repetir. Solo valida formato, no que existan. */
+export function normalizePhones(phone: string | null | undefined, defaultCountry: "CO" = "CO"): string[] {
+  const out: string[] = [];
+  for (const part of splitPhones(phone)) {
+    const parsed = parsePhoneNumberFromString(part, defaultCountry);
+    if (parsed && parsed.isValid() && !out.includes(parsed.number)) out.push(parsed.number);
+  }
+  return out;
+}
+
+/** El primer teléfono válido (el que usa WhatsApp). "" si ninguno lo es. */
 export function normalizePhone(phone: string | null | undefined, defaultCountry: "CO" = "CO"): string {
-  if (!phone) return "";
-  const parsed = parsePhoneNumberFromString(phone, defaultCountry);
-  return parsed && parsed.isValid() ? parsed.number : "";
+  return normalizePhones(phone, defaultCountry)[0] ?? "";
+}
+
+/** ¿TODOS los números escritos son válidos? Sirve para validar lo que escribe el usuario. */
+export function allPhonesValid(phone: string | null | undefined): boolean {
+  const parts = splitPhones(phone);
+  return parts.length > 0 && parts.every((p) => normalizePhones(p).length === 1);
 }
 
 export function normalizeEmail(email: string | null | undefined): string {
