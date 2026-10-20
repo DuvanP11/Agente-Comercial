@@ -2,6 +2,9 @@
 import { revalidatePath } from "next/cache";
 import { ensureDefaultOrg, getDb } from "@/lib/db/client";
 import { saveAssessment, setQualification } from "@/lib/services/analysis";
+import { providerFromEnv } from "@/lib/ai/provider";
+import { proposeAssessment } from "@/lib/services/agents";
+import type { QualificationProposal } from "@/lib/agents/qualification";
 import { DEFAULT_WEIGHTS, type CriterionKey } from "@/lib/scoring/score";
 
 export interface AnalysisState { error?: string; ok?: string }
@@ -32,4 +35,19 @@ export async function qualifyAction(prospectId: string, qualified: boolean) {
   catch (e) { return e instanceof Error ? e.message : "Error"; }
   revalidatePath(`/analizar/${prospectId}`);
   return null;
+}
+
+
+export interface ProposeResult { ok: boolean; error?: string; warnings: string[]; proposal?: QualificationProposal }
+
+/** La IA propone la valoración. NO se guarda nada: el formulario la carga y la persona decide. */
+export async function proposeAction(prospectId: string): Promise<ProposeResult> {
+  try {
+    const db = await getDb();
+    const r = await proposeAssessment(db, await ensureDefaultOrg(db), prospectId, providerFromEnv(), "usuario");
+    return { ok: r.ok, error: r.error, warnings: r.warnings, proposal: r.output };
+  } catch (e) {
+    console.error("proposeAction falló:", e);
+    return { ok: false, error: "No se pudo generar la propuesta.", warnings: [] };
+  }
 }

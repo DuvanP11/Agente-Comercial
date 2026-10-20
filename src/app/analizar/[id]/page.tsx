@@ -5,6 +5,7 @@ import { getDb } from "@/lib/db/client";
 import { prospects } from "@/lib/db/schema";
 import { evidenceFor, type StoredScore } from "@/lib/services/analysis";
 import { CRITERION_LABELS } from "@/lib/scoring/score";
+import { aiReady } from "@/lib/ai/ready";
 import { AssessmentForm } from "./AssessmentForm";
 
 export const dynamic = "force-dynamic";
@@ -32,7 +33,7 @@ export default async function Analisis({ params }: { params: Promise<{ id: strin
           <p className="text-xs text-muted">Valorado por {s.assessedBy} el {new Date(s.assessedAt).toLocaleString("es-CO")}. La prioridad no es una probabilidad de contratación; se necesita al menos 40 % de cobertura para mostrarla.</p>
         </section>
       )}
-      <AssessmentForm prospectId={id} evidence={ev.map((e) => ({ id: e.id, field: e.field, observedValue: e.observedValue, sourceName: e.sourceName }))} current={s?.assessments ?? {}} status={p.status} />
+      <AssessmentForm prospectId={id} evidence={ev.map((e) => ({ id: e.id, field: e.field, observedValue: e.observedValue, sourceName: e.sourceName }))} current={s?.assessments ?? {}} status={p.status} aiReady={aiReady()} />
     </div>
   );
 }

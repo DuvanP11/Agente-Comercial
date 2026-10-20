@@ -4,14 +4,14 @@ import Link from "next/link";
 import { CP_STATUSES, CP_STATUS_KEYS } from "@/lib/campaigns";
 import { telLink } from "@/lib/contact-links";
 import {
-  approveAction, doNotContactAction, draftAction, followUpAction, generateAction, statusAction, whatsappAction, type ActionResult,
+  aiDraftAction, approveAction, doNotContactAction, draftAction, followUpAction, generateAction, statusAction, whatsappAction, type ActionResult,
 } from "../actions";
 
 export interface RowProps {
   campaignId: string; cpId: string; closed: boolean;
   p: { id: string; name: string; phone: string | null; city: string | null; doNotContact: boolean };
   status: string; followUpDate: string; notes: string; followUp: string;
-  message: { body: string; status: string } | null; opens: number;
+  message: { body: string; status: string } | null; opens: number; aiReady?: boolean;
 }
 const FU: Record<string, [string, string]> = { overdue: ["Seguimiento vencido", "badge-bad"], today: ["Seguimiento hoy", "badge-warn"], upcoming: ["Seguimiento próximo", ""] };
 
@@ -23,6 +23,7 @@ export function ProspectRow(props: RowProps) {
   const [notes, setNotes] = useState(props.notes);
   const [body, setBody] = useState(props.message?.body ?? "");
   const [msgStatus, setMsgStatus] = useState(props.message?.status ?? "none");
+  const [revision, setRevision] = useState("");
   const [res, setRes] = useState<ActionResult | null>(null);
   const [pending, start] = useTransition();
   const locked = props.closed || p.doNotContact;
@@ -55,13 +56,17 @@ export function ProspectRow(props: RowProps) {
             <textarea id={`msg-${cpId}`} rows={5} className="input" value={body} disabled={locked}
               onChange={(e) => { setBody(e.target.value); if (msgStatus === "approved") setMsgStatus("draft"); }} />
             <div className="mt-2 flex flex-wrap gap-2">
+              <button className="btn" disabled={locked || pending || !props.aiReady} title={props.aiReady ? "Redacta un borrador con IA a partir de los datos de la campaña" : "IA no configurada (ver Agentes y skills)"}
+                onClick={() => run(() => aiDraftAction(campaignId, cpId, revision), (r) => { const t = (r as ActionResult & { text?: string }).text; if (t) { setBody(t); setMsgStatus("draft"); } })}>Redactar con IA</button>
               <button className="btn" disabled={locked || pending} onClick={() => run(() => generateAction(campaignId, cpId), (r) => { const t = (r as ActionResult & { text?: string }).text; if (t !== undefined) { setBody(t); setMsgStatus("draft"); } })}>Generar desde la plantilla</button>
               <button className="btn" disabled={locked || pending || !body.trim()} onClick={() => run(() => draftAction(campaignId, cpId, body), (r) => { if (!r.error) setMsgStatus("draft"); })}>Guardar borrador</button>
               <button className="btn" disabled={locked || pending || msgStatus !== "draft"} onClick={() => run(() => approveAction(campaignId, cpId), (r) => { if (!r.error) setMsgStatus("approved"); })}>Aprobar mensaje</button>
               <button className="btn btn-primary" disabled={locked || pending || msgStatus !== "approved" || !p.phone}
                 onClick={() => run(() => whatsappAction(campaignId, cpId, false), (r) => { if (r.url) window.open(r.url, "_blank", "noopener,noreferrer"); })}>Abrir WhatsApp</button>
             </div>
-            <p className="mt-1 text-xs text-muted">Guardar o editar retira la aprobación. “Abrir WhatsApp” solo abre el chat con el texto; no envía nada. Luego cambia el estado a “Contactado” cuando lo envíes.</p>
+            {props.aiReady && !locked && <div className="mt-2"><label className="label" htmlFor={`rev-${cpId}`}>Ajuste para la IA (opcional, p. ej. «más corto» o «más formal»)</label>
+              <input id={`rev-${cpId}`} className="input" maxLength={300} value={revision} onChange={(e) => setRevision(e.target.value)} /></div>}
+            <p className="mt-1 text-xs text-muted">La IA solo escribe un borrador sin aprobar: nunca incluye precios, descuentos ni promesas que no estén en tu campaña. Guardar o editar retira la aprobación. “Abrir WhatsApp” solo abre el chat con el texto; no envía nada. Luego cambia el estado a “Contactado” cuando lo envíes.</p>
             {res?.repeatWarning && (
               <p role="alert" className="mt-2 text-sm badge-warn">{res.repeatWarning}{" "}
                 <button className="btn ml-2" disabled={pending} onClick={() => run(() => whatsappAction(campaignId, cpId, true), (r) => { if (r.url) window.open(r.url, "_blank", "noopener,noreferrer"); })}>Sí, abrir de nuevo</button></p>)}

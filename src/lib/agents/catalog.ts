@@ -13,16 +13,16 @@ export const AGENTS: CatalogItem[] = [
   { n: 4, name: "Directorios empresariales", how: "—", status: "pending", ai: false, detail: "Falta elegir un proveedor autorizado." },
   { n: 5, name: "Enriquecimiento de datos", how: "Manual", status: "partial", ai: false, detail: "Completar contacto a mano en la ficha. Enriquecimiento automático: pendiente." },
   { n: 6, name: "Deduplicación", how: "Reglas", status: "ready", ai: false, detail: "Motor determinista: exacta y probable, con revisión humana." },
-  { n: 7, name: "Calificación comercial", how: "IA propone + código valida", status: "logic", ai: true, detail: "La IA propone la valoración; el código degrada lo no demostrable y decide el canal de contacto. Nada se guarda sin tu aprobación." },
+  { n: 7, name: "Calificación comercial", how: "IA propone + código valida", status: "ready", ai: true, detail: "Botón «Proponer con IA» en Analizar. La IA propone la valoración; el código degrada lo no demostrable y decide el canal de contacto. Nada se guarda sin tu aprobación." },
   { n: 8, name: "Análisis de oportunidades", how: "Reglas", status: "partial", ai: false, detail: "Plan de acercamiento por reglas. Versión con IA: pendiente." },
   { n: 9, name: "Estrategia de negociación", how: "Reglas", status: "partial", ai: false, detail: "Objeciones y preguntas de diagnóstico. Precios: requieren tarifas oficiales." },
-  { n: 10, name: "Redacción comercial", how: "IA + barreras", status: "logic", ai: true, detail: "Borrador de WhatsApp; se rechaza todo precio, cifra, promesa o enlace que no esté en tus datos. Siempre queda sin aprobar." },
+  { n: 10, name: "Redacción comercial", how: "IA + barreras", status: "ready", ai: true, detail: "Botón «Redactar con IA» en Campañas. Borrador de WhatsApp; se rechaza todo precio, cifra, promesa o enlace que no esté en tus datos. Siempre queda sin aprobar." },
   { n: 11, name: "Seguimiento", how: "Reglas", status: "partial", ai: false, detail: "Seguimientos con fecha en campañas. Sugerencias con IA: pendientes." },
   { n: 12, name: "Análisis gerencial", how: "Reglas", status: "partial", ai: false, detail: "Dashboard, metas y mercado con datos reales. Interpretación con IA: pendiente." },
 ];
 
 export const EXTRA_AGENTS: CatalogItem[] = [
-  { n: 13, name: "Interpretación de búsqueda", how: "IA propone + código valida", status: "logic", ai: true, detail: "Convierte tu petición en criterios (ciudad, zonas, rubros). Tú los revisas antes de buscar." },
+  { n: 13, name: "Interpretación de búsqueda", how: "IA propone + código valida", status: "ready", ai: true, detail: "Botón «Interpretar con IA» en Buscar. Convierte tu petición en criterios (ciudad, zonas, rubros). Tú los revisas antes de buscar." },
 ];
 
 export const SKILLS: { name: string; status: Maturity; detail: string }[] = [

@@ -6,6 +6,9 @@ import { ensureDefaultOrg, getDb } from "@/lib/db/client";
 import { searches } from "@/lib/db/schema";
 import { ingestProspects, type IngestOutcome } from "@/lib/services/prospects";
 import { saveSnapshot } from "@/lib/services/searches";
+import { providerFromEnv } from "@/lib/ai/provider";
+import { interpretSearch } from "@/lib/services/agents";
+import type { InterpretedSearch } from "@/lib/agents/searchInterpreter";
 
 export interface SearchState {
   status: "idle" | "ok" | "error";
@@ -55,5 +58,20 @@ export async function runSearch(_: SearchState, fd: FormData): Promise<SearchSta
       try { const db = await getDb(); await db.update(searches).set({ status: "failed", error: msg, finishedAt: new Date() }).where(eq(searches.id, searchId)); } catch { /* ya se informa abajo */ }
     }
     return { status: "error", message: `La búsqueda falló: ${msg}` };
+  }
+}
+
+
+export interface InterpretResult { ok: boolean; error?: string; warnings: string[]; output?: InterpretedSearch }
+
+/** La IA convierte tu descripción en criterios. Solo propone: los campos se llenan para que los revises antes de buscar. */
+export async function interpretAction(text: string): Promise<InterpretResult> {
+  try {
+    const db = await getDb();
+    const r = await interpretSearch(db, await ensureDefaultOrg(db), text, providerFromEnv(), "usuario");
+    return { ok: r.ok, error: r.error, warnings: r.warnings, output: r.output };
+  } catch (e) {
+    console.error("interpretAction falló:", e);
+    return { ok: false, error: "No se pudo interpretar la búsqueda.", warnings: [] };
   }
 }

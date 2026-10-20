@@ -1,6 +1,6 @@
 # Agentes y skills
 
-**Estado:** la capa de agentes con IA existe (`src/lib/agents`, `src/lib/ai`) con tres agentes y sus pruebas; falta conectarlos a las pantallas, y eso se activa al configurar un proveedor de IA. El catálogo con el estado real de los 12 agentes está en la pantalla **Agentes y skills**.
+**Estado:** la capa de agentes con IA existe (`src/lib/agents`, `src/lib/ai`) con tres agentes y sus pruebas; los tres tienen su botón en pantalla (Buscar → «Interpretar con IA», Analizar → «Proponer con IA», Campañas → «Redactar con IA»), activo cuando hay un proveedor configurado. El catálogo con el estado real de los 12 agentes está en la pantalla **Agentes y skills**.
 
 Diseño previsto: cada agente = función con entrada/salida validada con Zod, herramientas autorizadas, límite de ejecución y registro en `audit_log`. Un agente **no** puede enviar mensajes ni modificar datos críticos; esas acciones pasan por servicios con aprobación humana. Se empezará por: calificación (evalúa criterios → `scoreProspect`), análisis de oportunidad y redacción. No se crearán agentes sin responsabilidad real.
 

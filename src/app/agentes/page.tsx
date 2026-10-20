@@ -41,7 +41,7 @@ export default async function Agentes() {
           <tbody>{all.map((a) => (
             <tr key={a.n}><td>{a.n}</td><td><b>{a.name}</b>{a.ai && <span className="badge ml-2">usa IA</span>}</td><td className="text-sm">{a.how}</td>
               <td><span className={`badge ${TONE[a.status]}`}>{MATURITY_LABEL[a.status]}</span></td><td className="text-sm">{a.detail}</td></tr>))}</tbody></table>
-        <p className="mt-2 text-xs text-muted">Los agentes con IA ya tienen su lógica, validaciones y pruebas; su botón en las pantallas se activa al configurar el proveedor, para que puedas probarlos con respuestas reales.</p>
+        <p className="mt-2 text-xs text-muted">Los agentes marcados «usa IA» tienen su botón en la pantalla correspondiente y se activan cuando hay un proveedor configurado. Siempre proponen; tú revisas, guardas o apruebas.</p>
       </section>
 
       <section className="card overflow-x-auto" aria-label="Skills">

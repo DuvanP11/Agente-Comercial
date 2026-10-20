@@ -1,7 +1,7 @@
 "use client";
-import { useActionState, useEffect, useState } from "react";
+import { useActionState, useEffect, useState, useTransition } from "react";
 import { OutcomeTable } from "@/components/OutcomeTable";
-import { runSearch, type SearchState } from "./actions";
+import { interpretAction, runSearch, type InterpretResult, type SearchState } from "./actions";
 import type { IngestOutcome } from "@/lib/services/prospects";
 
 
@@ -13,7 +13,7 @@ export interface Restored {
   snapshot: { message: string; errors: string[]; items: IngestOutcome[] } | null;
 }
 
-export function SearchForm({ sources, restored }: { sources: Source[]; restored?: Restored }) {
+export function SearchForm({ sources, restored, aiReady = false }: { sources: Source[]; restored?: Restored; aiReady?: boolean }) {
   const initial: SearchState = restored?.snapshot
     ? { status: "ok", message: restored.snapshot.message, errors: restored.snapshot.errors, outcomes: restored.snapshot.items, searchId: restored.searchId }
     : { status: "idle" };
@@ -27,6 +27,21 @@ export function SearchForm({ sources, restored }: { sources: Source[]; restored?
   const [categories, setCategories] = useState(c?.categories.join(", ") ?? "");
   const [excludeTerms, setExcludeTerms] = useState(c?.excludeTerms.join(", ") ?? "");
   const [maxResults, setMaxResults] = useState(String(c?.maxResults ?? 20));
+
+  const [ai, setAi] = useState<InterpretResult | null>(null);
+  const [aiPending, startAi] = useTransition();
+  const interpret = () => startAi(async () => {
+    const r = await interpretAction(brief);
+    setAi(r);
+    if (r.ok && r.output) {
+      // Solo se llenan los campos para que los revises; no se busca nada todavía.
+      if (r.output.city) setCity(r.output.city);
+      setZones(r.output.zones.join(", "));
+      setCategories(r.output.categories.join(", "));
+      setExcludeTerms(r.output.excludeTerms.join(", "));
+      if (r.output.maxResults !== null) setMaxResults(String(r.output.maxResults));
+    }
+  });
 
   // Tras una búsqueda nueva, la URL apunta a ella: así "Volver" desde una ficha y recargar la página la recuperan.
   useEffect(() => {
@@ -44,7 +59,13 @@ export function SearchForm({ sources, restored }: { sources: Source[]; restored?
         <div className="md:col-span-2">
           <label className="label" htmlFor="brief">Descripción en lenguaje natural (se guarda como contexto)</label>
           <textarea id="brief" name="brief" rows={2} className="input" value={brief} onChange={(e) => setBrief(e.target.value)} placeholder="Ej.: cosmética y moda con tienda online en Chapinero y Usaquén…" />
-          <p className="mt-1 text-xs text-muted">La conversión automática a criterios con IA está pendiente (fase 4). Por ahora completa los campos de abajo.</p>
+          <div className="mt-2 flex flex-wrap items-center gap-3">
+            <button type="button" className="btn" disabled={!aiReady || aiPending || brief.trim().length < 5} onClick={interpret}>{aiPending ? "Interpretando…" : "Interpretar con IA"}</button>
+            <span className="text-xs text-muted">{aiReady ? "Llena los campos de abajo a partir de tu descripción. Revísalos antes de buscar." : "IA no configurada: completa los campos a mano (ver Agentes y skills)."}</span>
+          </div>
+          {ai && !ai.ok && <p role="alert" className="mt-1 text-sm badge-bad">{ai.error}</p>}
+          {ai?.ok && <div role="status" className="mt-1 text-sm"><p className="badge-ok">Campos llenados desde tu descripción. Revísalos antes de buscar.</p>
+            {ai.warnings.map((w) => <p key={w} className="badge-warn">⚠ {w}</p>)}{ai.output?.notes && <p className="text-muted">Nota del modelo: {ai.output.notes}</p>}</div>}
         </div>
         <div><label className="label" htmlFor="city">Ciudad *</label><input id="city" name="city" required className="input" value={city} onChange={(e) => setCity(e.target.value)} /></div>
         <div><label className="label" htmlFor="zones">Localidades o zonas (separadas por coma)</label><input id="zones" name="zones" className="input" value={zones} onChange={(e) => setZones(e.target.value)} placeholder="Chapinero, Usaquén, Suba" /></div>

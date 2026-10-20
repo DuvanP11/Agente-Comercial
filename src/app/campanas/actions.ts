@@ -2,6 +2,8 @@
 import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
 import { ensureDefaultOrg, getDb } from "@/lib/db/client";
+import { providerFromEnv } from "@/lib/ai/provider";
+import { draftForCampaignProspect } from "@/lib/services/agents";
 import {
   addProspects, approveMessage, closeCampaign, createCampaign, generateDraft, openWhatsApp, saveDraft,
   setCpStatus, setDoNotContact, setFollowUp,
@@ -67,4 +69,18 @@ export async function doNotContactAction(campaignId: string, prospectId: string,
 }
 export async function closeCampaignAction(campaignId: string): Promise<ActionResult> {
   return (await run(campaignId, async (db, org) => { await closeCampaign(db, org, campaignId, ACTOR); return { ok: "Campaña cerrada." } as ActionResult; })) as ActionResult;
+}
+
+
+/** La IA redacta un borrador; queda guardado SIN aprobar. La aprobación sigue siendo humana. */
+export async function aiDraftAction(campaignId: string, cpId: string, revision: string): Promise<ActionResult & { text?: string }> {
+  try {
+    const { db, org } = await ctx();
+    const r = await draftForCampaignProspect(db, org, cpId, providerFromEnv(), ACTOR, revision || null);
+    revalidatePath(`/campanas/${campaignId}`);
+    return { ok: r.ok ? "Borrador generado con IA. Revísalo y apruébalo si está bien." : undefined, error: r.error, warnings: r.warnings, text: r.output?.body };
+  } catch (e) {
+    console.error("aiDraftAction falló:", e);
+    return { error: "No se pudo redactar el borrador." };
+  }
 }

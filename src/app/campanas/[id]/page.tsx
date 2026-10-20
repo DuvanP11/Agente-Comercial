@@ -5,6 +5,7 @@ import { CP_STATUSES, CP_STATUS_KEYS } from "@/lib/campaigns";
 import { campaignDetail, eligibleProspects } from "@/lib/services/campaigns";
 import { normalizePhone } from "@/lib/dedup/normalize";
 import { closeCampaignAction } from "../actions";
+import { aiReady } from "@/lib/ai/ready";
 import { AddProspects } from "./AddProspects";
 import { ProspectRow } from "./ProspectRow";
 
@@ -19,6 +20,7 @@ export default async function CampaignPage({ params }: { params: Promise<{ id: s
   try { detail = await campaignDetail(db, org, id); } catch { notFound(); }
   const { campaign: c, items, funnel } = detail;
   const closed = c.status === "closed";
+  const ai = aiReady();
   const options = closed ? [] : (await eligibleProspects(db, org, id)).map((p) => ({ id: p.id, name: p.name, city: p.city, category: p.category, hasPhone: !!normalizePhone(p.phone) }));
 
   return (
@@ -45,7 +47,7 @@ export default async function CampaignPage({ params }: { params: Promise<{ id: s
             <ProspectRow key={i.cp.id} campaignId={id} cpId={i.cp.id} closed={closed}
               p={{ id: i.p.id, name: i.p.name, phone: i.p.phone, city: i.p.city, doNotContact: i.p.doNotContact }}
               status={i.cp.status} followUpDate={bogotaDate(i.cp.nextFollowUpAt)} notes={i.cp.notes ?? ""} followUp={i.followUp}
-              message={i.message ? { body: i.message.body, status: i.message.status } : null} opens={i.opens} />))}
+              message={i.message ? { body: i.message.body, status: i.message.status } : null} opens={i.opens} aiReady={ai} />))}
       </section>
 
       {!closed && (
