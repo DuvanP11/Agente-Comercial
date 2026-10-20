@@ -84,3 +84,31 @@ describe("volver a una búsqueda guardada", () => {
     expect(await loadSearch(db, "otra-org", "00000000-0000-0000-0000-000000000000")).toBeNull();
   });
 });
+
+import { loadMarket } from "@/lib/services/market";
+import { bySector } from "@/lib/market";
+import { addProspects as addP, createCampaign as createC, campaignDetail as detailC, setCpStatus as setS } from "@/lib/services/campaigns";
+
+describe("inteligencia de mercado con base de datos", () => {
+  it("excluye duplicados y demo por defecto, y toma la etapa más avanzada de cada prospecto", async () => {
+    const d = await createPgliteDb(); const o = await ensureDefaultOrg(d);
+    const out = await ingestProspects(d, o, [
+      raw({ name: "Glam House", category: "cosmética", phone: "3107778899", sourceId: "1" }),
+      raw({ name: "Glam House Sur", category: "cosmética", phone: "+57 310 777 8899", sourceId: "2" }), // duplicado
+      raw({ name: "Demo SA", category: "ropa", sourceId: "3", isDemo: true }),
+    ]);
+    const c1 = await createC(d, o, { name: "Campaña uno", template: "Hola {empresa}, somos PIBOX." }, "t");
+    const c2 = await createC(d, o, { name: "Campaña dos", template: "Hola {empresa}, somos PIBOX." }, "t");
+    await addP(d, o, c1.id, [out[0].prospectId], "t"); await addP(d, o, c2.id, [out[0].prospectId], "t");
+    await setS(d, o, (await detailC(d, o, c1.id)).items[0].cp.id, "won", "t");
+    // en la otra campaña sigue pendiente; debe contar la más avanzada (ganado)
+
+    const m = await loadMarket(d, o, { since: null, includeDemo: false });
+    expect(m.rows.map((r) => r.name)).toEqual(["Glam House"]);
+    expect(m.excludedDuplicates).toBe(1); expect(m.demoCount).toBe(1);
+    expect(m.rows[0]).toMatchObject({ cpStatus: "won", hasPhone: true, hasWeb: false });
+    expect(bySector(m.rows)[0]).toMatchObject({ key: "belleza", total: 1, won: 1 });
+    expect((await loadMarket(d, o, { since: null, includeDemo: true })).rows).toHaveLength(2);
+    expect((await loadMarket(d, o, { since: new Date(Date.now() + 86_400_000), includeDemo: true })).rows).toHaveLength(0); // periodo futuro = vacío
+  });
+});

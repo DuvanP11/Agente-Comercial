@@ -6,12 +6,12 @@
 | 2. Base de la aplicación | 🟡 parcial | Hecho: navegación, tokens/temas, contraste, acceso por contraseña compartida. **Falta**: usuarios y roles reales, multi-organización (hoy hay una organización de desarrollo), límites de peticiones. |
 | 3. BD y prospectos | ✅ núcleo | Esquema, importación CSV/XLSX con mapeo y vista previa, dedup exacta/probable, revisión humana. **Falta**: fusión/vinculación real de cuentas, borrado/exportación de datos personales, ficha completa. |
 | 4. Multiagente | ⬜ | No existe orquestador ni agentes. Requiere elegir proveedor de IA. |
-| 5. Investigación y calificación | 🟡 parcial | Importación de prospectos CSV/Excel (sin costo) + Google Places + evidencias + motor de scoring probado. **Falta**: LinkedIn, directorios, web, agente que evalúe criterios, enriquecimiento. |
+| 5. Investigación y calificación | 🟡 parcial | Importación de prospectos CSV/Excel (sin costo) + Google Places + evidencias + motor de scoring probado. **Inteligencia de mercado**: conteos y embudo por rubro (familias y original), ciudad y fuente, calidad de datos y salud de búsquedas, con periodo y aviso de muestra pequeña. **Falta**: LinkedIn, directorios, web, agente que evalúe criterios, enriquecimiento, tendencias en el tiempo, análisis con IA. |
 | 6. Captación | 🟡 parcial | Campañas con plantilla por prospecto, aprobación explícita, WhatsApp (solo abre), estados con historial, seguimientos, **no contactar** (Ley 1581), embudo y metas de reuniones/propuestas/clientes ganados desde datos reales. **Captar clientes**: selección de prospectos listos, plan de acercamiento por reglas (sin IA: resumen de lo que se sabe y lo que no, preguntas de diagnóstico por rubro, objeciones, preparación de reunión, siguiente acción) y envío a campaña. **Falta**: redacción con IA, correo (Gmail), negociación de precios (requiere tarifas oficiales), reactivación, análisis de oportunidades perdidas. |
 | 7. Integraciones | ⬜ | Gmail OAuth, WhatsApp Business, mapas embebidos. |
 | 8. Entrenamiento | ⬜ | |
 | 9. Dashboard | 🟡 parcial | Conteos reales. **Falta**: metas, funnel, costos, finanzas, reportes. |
-| 10. Pruebas y despliegue | 🟡 | 113 pruebas unitarias/integración pasan; build pasa. **Sin** pruebas E2E de interfaz; **sin** despliegue. |
+| 10. Pruebas y despliegue | 🟡 | 125 pruebas unitarias/integración pasan; build pasa. **Sin** pruebas E2E de interfaz; **sin** despliegue. |
 
 ## Pendientes que requieren al usuario
 - **P-1** Imagen corporativa de PIBOX para fijar la paleta oficial (hoy provisional).
