@@ -14,29 +14,63 @@ export class AiError extends Error {
   constructor(public code: AiErrorCode, message: string) { super(message); this.name = "AiError"; }
 }
 
-export interface Completion { text: string; model: string; usage?: { promptTokens?: number; completionTokens?: number } }
+export interface FailedAttempt { label: string; code: AiErrorCode }
+export interface Completion {
+  text: string; model: string; usage?: { promptTokens?: number; completionTokens?: number };
+  /** Presente cuando respondió una cadena de proveedores: quién respondió y a quiénes se intentó antes. */
+  via?: { label: string; attempted: FailedAttempt[] };
+}
 export interface AiProvider {
   readonly model: string;
   complete(req: { system: string; user: string; temperature?: number; signal?: AbortSignal }): Promise<Completion>;
 }
 
-export function aiConfigFromEnv(env: Record<string, string | undefined> = process.env): AiConfig | null {
-  const baseUrl = env.AI_BASE_URL?.trim(), apiKey = env.AI_API_KEY?.trim(), model = env.AI_MODEL?.trim();
+/** Orden de la cadena: AI_* (principal), AI2_* (respaldo 1), AI3_* (respaldo 2). */
+const PREFIXES = ["AI", "AI2", "AI3"] as const;
+
+function readConfig(env: Record<string, string | undefined>, prefix: string): AiConfig | null {
+  const baseUrl = env[`${prefix}_BASE_URL`]?.trim(), apiKey = env[`${prefix}_API_KEY`]?.trim(), model = env[`${prefix}_MODEL`]?.trim();
   if (!baseUrl || !model) return null;
   // Ollama local no exige clave; los demás sí.
-  const local = /^https?:\/\/(localhost|127\.0\.0\.1)(:|\/|$)/.test(baseUrl);
-  if (!apiKey && !local) return null;
-  const t = Number(env.AI_TIMEOUT_MS);
+  if (!apiKey && !isLocalUrl(baseUrl)) return null;
+  const t = Number(env[`${prefix}_TIMEOUT_MS`]);
   return { baseUrl: baseUrl.replace(/\/+$/, ""), apiKey: apiKey ?? "", model, timeoutMs: Number.isFinite(t) && t >= 5_000 && t <= 120_000 ? t : 45_000 };
 }
 
-export type AiStatus = { state: "connected"; model: string; host: string } | { state: "not_configured"; missing: string[]; howTo: string };
+export const isLocalUrl = (u: string) => /^https?:\/\/(localhost|127\.0\.0\.1|\[::1\])(:|\/|$)/.test(u);
+const hostOf = (u: string) => { try { return new URL(u).host; } catch { return ""; } };
+
+/** Compatibilidad: el proveedor principal. */
+export function aiConfigFromEnv(env: Record<string, string | undefined> = process.env): AiConfig | null {
+  return readConfig(env, "AI");
+}
+
+/** Todos los proveedores configurados, en orden de preferencia. Los incompletos se omiten (y se avisa en el estado). */
+export function aiConfigsFromEnv(env: Record<string, string | undefined> = process.env): AiConfig[] {
+  return PREFIXES.map((p) => readConfig(env, p)).filter((c): c is AiConfig => c !== null);
+}
+
+export interface ProviderInfo { role: "principal" | "respaldo 1" | "respaldo 2"; host: string; model: string; local: boolean }
+export type AiStatus =
+  | { state: "connected"; model: string; host: string; providers: ProviderInfo[]; warnings: string[] }
+  | { state: "not_configured"; missing: string[]; howTo: string; warnings: string[] };
+
+const ROLES: ProviderInfo["role"][] = ["principal", "respaldo 1", "respaldo 2"];
 
 export function aiStatus(env: Record<string, string | undefined> = process.env): AiStatus {
-  const c = aiConfigFromEnv(env);
-  if (c) { let host = ""; try { host = new URL(c.baseUrl).host; } catch { /* se informa vacío */ } return { state: "connected", model: c.model, host }; }
+  const warnings: string[] = [];
+  const onServerless = !!env.VERCEL || env.NODE_ENV === "production";
+  // Avisos por proveedor a medio configurar (para que el usuario no crea que el respaldo está activo).
+  PREFIXES.forEach((p, i) => {
+    const touched = [`${p}_BASE_URL`, `${p}_MODEL`, `${p}_API_KEY`].some((k) => env[k]?.trim());
+    if (touched && !readConfig(env, p)) warnings.push(`${ROLES[i]}: configuración incompleta (${p}_BASE_URL, ${p}_MODEL y ${p}_API_KEY); se ignora.`);
+  });
+  const providers = PREFIXES.map((p, i) => ({ c: readConfig(env, p), role: ROLES[i] })).filter((x): x is { c: AiConfig; role: ProviderInfo["role"] } => x.c !== null)
+    .map(({ c, role }) => ({ role, host: hostOf(c.baseUrl), model: c.model, local: isLocalUrl(c.baseUrl) }));
+  for (const p of providers) if (p.local && onServerless) warnings.push(`${p.role} (${p.host}) es local: un servidor en la nube como Vercel no puede alcanzar tu computador. Solo funcionará si ejecutas la app en tu propia máquina.`);
+  if (providers.length) return { state: "connected", model: providers[0].model, host: providers[0].host, providers, warnings };
   const missing = ["AI_BASE_URL", "AI_MODEL", "AI_API_KEY"].filter((k) => !env[k]?.trim());
-  return { state: "not_configured", missing, howTo: "Define AI_BASE_URL, AI_MODEL y AI_API_KEY (no necesaria con Ollama local) en las variables de entorno del servidor. Ver docs/INTEGRATIONS.md." };
+  return { state: "not_configured", missing, howTo: "Define AI_BASE_URL, AI_MODEL y AI_API_KEY (no necesaria con Ollama local) en las variables de entorno del servidor. Respaldos opcionales con AI2_* y AI3_*. Ver docs/INTEGRATIONS.md.", warnings };
 }
 
 export function createProvider(cfg: AiConfig, fetchImpl: typeof fetch = fetch): AiProvider {
@@ -68,8 +102,58 @@ export function createProvider(cfg: AiConfig, fetchImpl: typeof fetch = fetch): 
   };
 }
 
-/** Proveedor del entorno, o null si no está configurado (el sistema lo dice; nunca simula una respuesta). */
+export interface ChainOptions {
+  /** Cuánto se salta un proveedor que acaba de fallar (límite de uso, red, clave). */
+  cooldownMs?: number;
+  now?: () => number;
+}
+
+const COOLDOWN_BY_CODE: Partial<Record<AiErrorCode, number>> = { auth: 30 * 60_000, rate_limit: 5 * 60_000, timeout: 2 * 60_000, network: 2 * 60_000, http: 60_000 };
+
+/**
+ * Cadena de proveedores con respaldo automático: prueba en orden y pasa al siguiente si el actual falla
+ * (límite de uso, timeout, red caída, error del servidor o clave rechazada). Un proveedor que falló se
+ * salta durante un tiempo para no perder segundos en cada consulta; si TODOS están en pausa, se intentan igual.
+ * La respuesta indica quién contestó y a quiénes se intentó antes, para dejarlo registrado.
+ */
+export function createFailoverProvider(chain: { label: string; provider: AiProvider }[], opts: ChainOptions = {}): AiProvider {
+  if (chain.length === 0) throw new Error("La cadena de proveedores está vacía.");
+  const now = opts.now ?? Date.now;
+  const pausedUntil = new Map<string, number>();
+  return {
+    model: chain[0].provider.model,
+    async complete(req) {
+      const t = now();
+      const active = chain.filter((c) => (pausedUntil.get(c.label) ?? 0) <= t);
+      const order = active.length ? active : chain; // todos en pausa: se prueban igual
+      const attempted: FailedAttempt[] = [];
+      const reasons: string[] = [];
+      // Los que se saltaron por pausa también se informan.
+      for (const c of chain) if (!order.includes(c)) attempted.push({ label: c.label, code: "rate_limit" });
+      for (const c of order) {
+        try {
+          const done = await c.provider.complete(req);
+          return { ...done, via: { label: c.label, attempted } };
+        } catch (e) {
+          if (req.signal?.aborted) throw e;
+          const code: AiErrorCode = e instanceof AiError ? e.code : "network";
+          attempted.push({ label: c.label, code });
+          reasons.push(`${c.label}: ${e instanceof AiError ? e.message : "error inesperado"}`);
+          pausedUntil.set(c.label, now() + (opts.cooldownMs ?? COOLDOWN_BY_CODE[code] ?? 60_000));
+        }
+      }
+      throw new AiError(attempted[attempted.length - 1]?.code ?? "network", `Ningún proveedor de IA respondió. ${reasons.join(" | ")}`);
+    },
+  };
+}
+
+const ROLE_LABEL = ["Principal", "Respaldo 1", "Respaldo 2"];
+
+/** Proveedor del entorno (cadena completa), o null si no hay ninguno (el sistema lo dice; nunca simula una respuesta). */
 export function providerFromEnv(): AiProvider | null {
-  const c = aiConfigFromEnv();
-  return c ? createProvider(c) : null;
+  const cfgs = aiConfigsFromEnv();
+  if (cfgs.length === 0) return null;
+  const all = PREFIXES.map((p) => readConfig(process.env, p));
+  const chain = all.map((c, i) => (c ? { label: `${ROLE_LABEL[i]} (${hostOf(c.baseUrl)})`, provider: createProvider(c) } : null)).filter((x): x is { label: string; provider: AiProvider } => x !== null);
+  return chain.length === 1 ? chain[0].provider : createFailoverProvider(chain);
 }

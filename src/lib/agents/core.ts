@@ -24,6 +24,7 @@ export interface AgentDef<I, O> {
 export interface RunResult<O> { runId: string | null; ok: boolean; output?: O; warnings: string[]; error?: string }
 
 const MAX_INPUT_BYTES = 20_000;
+const REASON: Record<string, string> = { rate_limit: "límite de uso o en pausa", timeout: "no respondió a tiempo", network: "sin conexión", auth: "clave rechazada", http: "error del servidor", bad_response: "respuesta inválida", not_configured: "sin configurar" };
 
 /**
  * Ejecuta un agente: valida la entrada, llama al proveedor (con un reintento de reparación si el JSON viene mal),
@@ -45,9 +46,11 @@ export async function runAgent<I, O>(
   }).returning();
   const t0 = Date.now();
   let attempts = 0, promptTokens = 0, completionTokens = 0;
+  let answeredBy = provider.model;
+  const chainWarnings: string[] = [];
 
   const finish = async (patch: Partial<typeof agentRuns.$inferInsert>) => {
-    await db.update(agentRuns).set({ ...patch, attempts, promptTokens: promptTokens || null, completionTokens: completionTokens || null, durationMs: Date.now() - t0, finishedAt: new Date() }).where(eq(agentRuns.id, run.id));
+    await db.update(agentRuns).set({ ...patch, model: answeredBy, attempts, promptTokens: promptTokens || null, completionTokens: completionTokens || null, durationMs: Date.now() - t0, finishedAt: new Date() }).where(eq(agentRuns.id, run.id));
   };
   const fail = async (error: string): Promise<RunResult<O>> => { await finish({ status: "failed", error }); return { runId: run.id, ok: false, warnings: [], error }; };
 
@@ -59,14 +62,17 @@ export async function runAgent<I, O>(
       attempts++;
       const c = await provider.complete({ system, user: i === 0 ? user : `${user}\n\nTu respuesta anterior no fue válida (${lastFormatError}). Responde SOLO con el JSON pedido.` });
       promptTokens += c.usage?.promptTokens ?? 0; completionTokens += c.usage?.completionTokens ?? 0;
+      answeredBy = c.via ? `${c.via.label} · ${c.model}` : c.model;
+      for (const a of c.via?.attempted ?? []) chainWarnings.push(`El proveedor «${a.label}» no estaba disponible (${REASON[a.code]}); respondió «${c.via!.label}».`);
       try { output = parseJsonOutput(c.text, agent.outputSchema); }
       catch (e) { if (!(e instanceof AgentOutputError)) throw e; lastFormatError = e.message; }
     }
     if (output === undefined) return await fail(`El modelo no devolvió una respuesta utilizable tras ${attempts} intentos: ${lastFormatError}`);
 
     const checked = agent.validate(input, output);
-    await finish({ status: "completed", output: checked.output as object, warnings: checked.warnings });
-    return { runId: run.id, ok: true, output: checked.output, warnings: checked.warnings };
+    const warnings = [...new Set(chainWarnings), ...checked.warnings];
+    await finish({ status: "completed", output: checked.output as object, warnings });
+    return { runId: run.id, ok: true, output: checked.output, warnings };
   } catch (e) {
     if (e instanceof AgentRejected) return fail(`Respuesta rechazada: ${e.message}`);
     if (e instanceof AiError) return fail(e.message);

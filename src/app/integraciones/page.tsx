@@ -23,7 +23,8 @@ export default function Integraciones() {
               <td className="text-sm">Variable <code>DATABASE_URL</code>. Obligatoria en producción.</td></tr>
             <tr><td>Proveedor de IA (compatible con OpenAI)</td>
               <td><span className={`badge ${ai.state === "connected" ? "badge-ok" : "badge-warn"}`}>{ai.state === "connected" ? "Configurado (no probado)" : "Pendiente"}</span></td>
-              <td className="text-sm">{ai.state === "connected" ? `Modelo ${ai.model} en ${ai.host}.` : `Falta ${ai.missing.join(", ")}. ${ai.howTo}`}</td></tr>
+              <td className="text-sm">{ai.state === "connected" ? ai.providers.map((p) => `${p.role}: ${p.model} en ${p.host}${p.local ? " (local)" : ""}`).join(" → ") : `Falta ${ai.missing.join(", ")}. ${ai.howTo}`}
+                {ai.warnings.map((w) => <span key={w} className="mt-1 block badge-warn">⚠ {w}</span>)}</td></tr>
             {rows.map((r) => (
               <tr key={r.id}><td>{r.label}</td>
                 <td><span className={`badge ${r.status.state === "connected" ? "badge-ok" : "badge-warn"}`}>{r.status.state === "connected" ? "Clave presente (no probada)" : r.status.state === "not_configured" ? "Pendiente" : "Error"}</span></td>

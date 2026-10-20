@@ -1,4 +1,4 @@
-import type { ZodType } from "zod";
+import { z, type ZodType } from "zod";
 import { stripAccents } from "../dedup/normalize";
 
 export class AgentOutputError extends Error { constructor(message: string) { super(message); this.name = "AgentOutputError"; } }
@@ -8,7 +8,8 @@ export class AgentOutputError extends Error { constructor(message: string) { sup
  * primera { y la última }. Luego valida contra el esquema. (Patrón de lead_agent, reescrito con Zod.)
  */
 export function parseJsonOutput<T>(raw: string, schema: ZodType<T>): T {
-  let text = raw.trim();
+  // Modelos con razonamiento visible (qwen3, deepseek-r1…) lo escriben entre <think>…</think> antes del JSON.
+  let text = raw.replace(/<think>[\s\S]*?<\/think>/gi, "").replace(/<think>[\s\S]*$/i, "").trim();
   if (text.startsWith("```")) text = text.replace(/^```(?:json)?/i, "").replace(/```$/, "").trim();
   const attempt = (s: string): { value?: unknown; ok: boolean } => { try { return { value: JSON.parse(s), ok: true }; } catch { return { ok: false }; } };
   let parsed = attempt(text);
@@ -62,3 +63,12 @@ export function inventedClaims(output: string, allowedSource: string): string[] 
   if (/https?:\/\/\S+/i.test(output)) for (const u of output.match(/https?:\/\/\S+/gi) ?? []) if (!src.includes(flat(u))) found.push(`enlace «${u}»`);
   return [...new Set(found)];
 }
+
+
+/**
+ * Esquemas indulgentes con la forma en que los modelos dicen "no sé": null en vez de valor ausente.
+ * (Observado con llama3.1: `"value": null` para un criterio sin base.) Se normalizan a vacío/0, nunca se inventa un dato.
+ */
+export const lenientStrings = z.array(z.string().nullable().transform((v) => v ?? "")).nullish().transform((v) => (v ?? []).filter(Boolean));
+export const lenientString = z.string().nullish().transform((v) => v ?? "");
+export const lenientNumber = z.number().nullish().transform((v) => v ?? 0);

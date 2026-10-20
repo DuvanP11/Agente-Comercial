@@ -2,7 +2,7 @@ import { beforeAll, describe, expect, it } from "vitest";
 import { eq } from "drizzle-orm";
 import { createPgliteDb, ensureDefaultOrg, type Db } from "@/lib/db/client";
 import { agentRuns, evidence, messages, prospects } from "@/lib/db/schema";
-import { AiError, type AiProvider } from "@/lib/ai/provider";
+import { AiError, createFailoverProvider, type AiProvider } from "@/lib/ai/provider";
 import { runAgent } from "@/lib/agents/core";
 import { searchInterpreter } from "@/lib/agents/searchInterpreter";
 import { draftForCampaignProspect, interpretSearch, listRuns, proposeAssessment } from "@/lib/services/agents";
@@ -81,6 +81,31 @@ describe("ejecutor de agentes", () => {
   });
 });
 
+describe("respaldo de proveedor en un agente", () => {
+  it("registra quién respondió y deja un aviso cuando el principal falló", async () => {
+    const principal: AiProvider = { model: "grande", async complete() { throw new AiError("rate_limit", "límite"); } };
+    const local: AiProvider = { model: "llama3.1", async complete() { return { text: '{"city":"Bogotá","zones":[],"categories":["ferretería"],"maxResults":null,"excludeTerms":[],"notes":null}', model: "llama3.1" }; } };
+    const chain = createFailoverProvider([{ label: "Principal (api.groq.com)", provider: principal }, { label: "Respaldo 1 (localhost:11434)", provider: local }]);
+    const r = await interpretSearch(db, org, "ferreterías en Bogotá", chain, "t");
+    expect(r.ok).toBe(true);
+    expect(r.warnings.join(" ")).toMatch(/«Principal \(api\.groq\.com\)» no estaba disponible \(límite de uso o en pausa\); respondió «Respaldo 1 \(localhost:11434\)»/);
+    const [run] = await db.select().from(agentRuns).where(eq(agentRuns.id, r.runId!));
+    expect(run.model).toBe("Respaldo 1 (localhost:11434) · llama3.1");
+    expect(JSON.stringify(run.warnings)).toMatch(/respondió/);
+  });
+  it("si toda la cadena falla, la ejecución queda fallida con el motivo de cada proveedor", async () => {
+    const dead = (m: string): AiProvider => ({ model: m, async complete() { throw new AiError("network", "sin conexión"); } });
+    const chain = createFailoverProvider([{ label: "A", provider: dead("a") }, { label: "B", provider: dead("b") }]);
+    const r = await interpretSearch(db, org, "ferreterías en Bogotá", chain, "t");
+    expect(r.ok).toBe(false); expect(r.error).toMatch(/Ningún proveedor.*A:.*B:/);
+  });
+  it("sin respaldo (un solo proveedor) el comportamiento no cambia", async () => {
+    const { p } = fake('{"city":"Bogotá","zones":[],"categories":["ferretería"],"maxResults":null,"excludeTerms":[],"notes":null}');
+    const r = await interpretSearch(db, org, "ferreterías en Bogotá", p, "t");
+    expect(r.ok).toBe(true); expect(r.warnings.join(" ")).not.toMatch(/respondió/);
+  });
+});
+
 describe("agente: interpretación de búsqueda", () => {
   it("normaliza, limita rubros y avisa de lo que el modelo agregó", async () => {
     const { p } = fake('{"city":"Medellín","zones":["Chapinero"],"categories":["Ferretería","ferretería","tienda de cosméticos"],"maxResults":500,"excludeTerms":[],"notes":null}');
@@ -110,6 +135,15 @@ describe("agente: interpretación de búsqueda", () => {
   });
 });
 
+describe("agente: interpretación con valores nulos", () => {
+  it("campos null se leen como vacíos", async () => {
+    const { p } = fake('{"city":null,"zones":null,"categories":["ferretería"],"maxResults":null,"excludeTerms":null,"notes":null}');
+    const r = await interpretSearch(db, org, "busco ferreterías por favor", p, "t");
+    expect(r.ok).toBe(true); expect(r.output).toMatchObject({ city: null, zones: [], excludeTerms: [] });
+    expect(r.warnings.join(" ")).toMatch(/No se detectó la ciudad/);
+  });
+});
+
 describe("agente: calificación (solo propone)", () => {
   const ev = async () => (await db.select().from(evidence).where(eq(evidence.entityId, pid)));
   it("no envía teléfonos ni correos al modelo", async () => {
@@ -134,15 +168,45 @@ describe("agente: calificación (solo propone)", () => {
     const r = await proposeAssessment(db, org, pid, p, "t");
     expect(r.ok).toBe(true);
     const by = Object.fromEntries(r.output!.assessments.map((a) => [a.criterion, a]));
-    expect(by.icp_fit).toMatchObject({ kind: "confirmed", evidenceIds: [addr], origin: "model" });
+    expect(by.icp_fit).toMatchObject({ kind: "inferred", evidenceIds: [addr], origin: "model" }); // la IA nunca deja «confirmado»
     expect(by.icp_fit.value).toBe(0.9); // el repetido no pisó al primero
     expect(by.logistics_need.kind).toBe("inferred");
-    expect(by.geo_compatibility.kind).toBe("hypothesis");
+    expect(by.geo_compatibility.kind).toBe("inferred");
     expect(by.delivery_volume.evidenceIds).toEqual([]); expect(by.delivery_volume.note).toBe(""); // cifra inventada descartada
     expect(by.contact_channel).toMatchObject({ origin: "rule", value: 1 }); // tiene teléfono → lo decide el código
     expect(by.evidence_quality).toBeUndefined(); expect(by.inexistente).toBeUndefined();
     expect(r.output!.summary).toBe(""); // "500 empleados" no está en los datos
     expect(r.warnings.length).toBeGreaterThanOrEqual(6);
+  });
+  it("«no hay información» dicho como hipótesis de valor 0 se trata como DESCONOCIDO, no como valor bajo", async () => {
+    // Caso real observado con llama3.1: marcó hipótesis/0 con la nota "No se dispone de información…"
+    const { p } = fake(JSON.stringify({ assessments: [
+      { criterion: "delivery_volume", kind: "hypothesis", value: 0, evidenceIds: [], note: "No se dispone de información sobre el volumen." },
+      { criterion: "delivery_frequency", kind: "inferred", value: 0, evidenceIds: [], note: "Sin información sobre la frecuencia." },
+      { criterion: "logistics_need", kind: "inferred", value: 0.6, evidenceIds: [], note: "Vende productos físicos de belleza." },
+    ], summary: "" }));
+    const r = await proposeAssessment(db, org, pid, p, "t");
+    const by = Object.fromEntries(r.output!.assessments.map((a) => [a.criterion, a]));
+    expect(by.delivery_volume).toMatchObject({ kind: "unknown", value: 0 });
+    expect(by.delivery_frequency.kind).toBe("unknown");
+    expect(by.logistics_need).toMatchObject({ kind: "inferred", value: 0.6 }); // una deducción real se conserva
+    expect(r.warnings.join(" ")).toMatch(/no como un valor bajo/);
+    // y en el puntaje, lo desconocido no resta: ver tests/scoring.test.ts
+  });
+  it("acepta null como «no sé» (caso real de llama3.1: \"value\": null) sin inventar un número", async () => {
+    const { p } = fake('{"assessments":[{"criterion":"operational_viability","kind":"unknown","value":null,"evidenceIds":null,"note":null},{"criterion":"logistics_need","kind":"inferred","value":0.5,"evidenceIds":[],"note":"Vende productos físicos."}],"summary":null}');
+    const r = await proposeAssessment(db, org, pid, p, "t");
+    expect(r.ok).toBe(true);
+    const by = Object.fromEntries(r.output!.assessments.map((a) => [a.criterion, a]));
+    expect(by.operational_viability).toMatchObject({ kind: "unknown", value: 0, evidenceIds: [], note: "" });
+    expect(by.logistics_need.value).toBe(0.5);
+  });
+  it("«No sé» no baja el puntaje, un valor bajo sí", async () => {
+    const { scoreProspect } = await import("@/lib/scoring/score");
+    const withUnknown = scoreProspect({ icp_fit: { value: 1, kind: "inferred", evidenceIds: [] }, logistics_need: { value: 1, kind: "inferred", evidenceIds: [] }, delivery_volume: { value: 0, kind: "unknown", evidenceIds: [] } });
+    const withLow = scoreProspect({ icp_fit: { value: 1, kind: "inferred", evidenceIds: [] }, logistics_need: { value: 1, kind: "inferred", evidenceIds: [] }, delivery_volume: { value: 0, kind: "hypothesis", evidenceIds: [] } });
+    expect(withUnknown.priority).toBe(100);
+    expect(withLow.priority).toBeLessThan(100);
   });
   it("NO escribe nada en el prospecto: solo propone", async () => {
     const [row] = await db.select().from(prospects).where(eq(prospects.id, pid));

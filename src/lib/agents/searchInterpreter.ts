@@ -1,16 +1,16 @@
 import { z } from "zod";
-import { appearsIn, SYSTEM_RULES, untrusted } from "../ai/guards";
+import { appearsIn, lenientStrings, SYSTEM_RULES, untrusted } from "../ai/guards";
 import { safeTerm } from "../connectors/openstreetmap";
 import { AgentRejected, type AgentDef } from "./core";
 
 const input = z.object({ text: z.string().trim().min(5, "Escribe una descripción de lo que buscas.").max(1000) });
 const output = z.object({
-  city: z.string().nullable(),
-  zones: z.array(z.string()).default([]),
-  categories: z.array(z.string()).default([]),
-  maxResults: z.number().nullable().default(null),
-  excludeTerms: z.array(z.string()).default([]),
-  notes: z.string().nullable().default(null),
+  city: z.string().nullish().transform((v) => v ?? null),
+  zones: lenientStrings,
+  categories: lenientStrings,
+  maxResults: z.number().nullish().transform((v) => v ?? null),
+  excludeTerms: lenientStrings,
+  notes: z.string().nullish().transform((v) => v ?? null),
 });
 export type InterpretedSearch = { city: string | null; zones: string[]; categories: string[]; maxResults: number | null; excludeTerms: string[]; notes: string | null };
 

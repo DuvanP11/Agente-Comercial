@@ -19,10 +19,17 @@ export default async function Agentes() {
 
       <section className="card space-y-1" aria-label="Proveedor de IA">
         <h2 className="font-semibold">Proveedor de IA</h2>
-        {ai.state === "connected"
-          ? <p className="text-sm"><span className="badge badge-ok">Configurado</span> modelo <b>{ai.model}</b> en <b>{ai.host}</b>. La clave existe; el primer uso real confirma si es válida.</p>
-          : <><p className="text-sm"><span className="badge badge-warn">Pendiente</span> Falta {ai.missing.join(", ")}.</p>
-            <p className="text-sm text-muted">{ai.howTo} Sirve cualquier API compatible con OpenAI. Algunos proveedores tienen plan gratuito: verifica sus condiciones vigentes y que permitan enviar información de negocios.</p></>}
+        {ai.state === "connected" ? (
+          <div className="space-y-1">
+            <p className="text-sm">Cadena de proveedores, en orden. Si uno falla o agota su cupo, se pasa al siguiente y queda anotado:</p>
+            <ol className="list-decimal space-y-1 pl-5 text-sm">{ai.providers.map((p) => (
+              <li key={p.role}><span className="badge badge-ok">{p.role}</span> modelo <b>{p.model}</b> en <b>{p.host}</b>{p.local && <span className="badge ml-2">local</span>}</li>))}</ol>
+            <p className="text-xs text-muted">Las claves existen; el primer uso real confirma si son válidas.</p>
+          </div>
+        ) : (
+          <><p className="text-sm"><span className="badge badge-warn">Pendiente</span> Falta {ai.missing.join(", ")}.</p>
+            <p className="text-sm text-muted">{ai.howTo} Sirve cualquier API compatible con OpenAI. Algunos proveedores tienen plan gratuito: verifica sus condiciones vigentes y que permitan enviar información de negocios.</p></>)}
+        {ai.warnings.map((w) => <p key={w} role="alert" className="text-sm badge-warn">⚠ {w}</p>)}
         <p className="text-xs text-muted">Al proveedor no se le envían teléfonos ni correos de prospectos, solo si existen.</p>
       </section>
 

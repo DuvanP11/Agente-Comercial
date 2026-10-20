@@ -10,3 +10,22 @@
 | Proveedor de IA (compatible con OpenAI) | Capa implementada y probada con proveedor simulado; **sin probar contra un proveedor real** (no hay clave) | `AI_BASE_URL`, `AI_MODEL`, `AI_API_KEY` (no necesaria con Ollama local), `AI_TIMEOUT_MS` opcional. Sirve OpenAI, Groq, OpenRouter, Gemini (endpoint compatible), Ollama… Verifica condiciones vigentes y plan gratuito de cada proveedor, y que permitan enviar información de negocios. |
 
 La pantalla **Integraciones** calcula el estado desde el entorno real: “Clave presente (no probada)” nunca se presenta como “conectado y funcionando”.
+
+
+## Cadena de proveedores de IA con respaldo (2026-10-20)
+
+`AI_*` es el principal; `AI2_*` y `AI3_*` son respaldos en orden. Si el actual falla (límite de uso, tiempo agotado, red caída, error del servidor o clave rechazada) se pasa al siguiente y la ejecución queda registrada con un aviso. Un proveedor que falló se salta unos minutos (límite de uso: 5 min; clave rechazada: 30 min; red o tiempo agotado: 2 min) para no perder segundos en cada consulta; si todos están en pausa, se intentan igual.
+
+**Recomendación de arranque:** principal con plan gratuito en la nube (p. ej. Groq: `https://api.groq.com/openai/v1`; elige un modelo de su lista en la consola) y respaldo con Ollama local.
+
+**Límites reales a tener en cuenta**
+- Los planes gratuitos limitan por modelo y por minuto; al pasarse devuelven 429 (Groq no cobra en su plan gratuito). Las cifras exactas se ven en la consola de tu cuenta y cambian: no las asumas.
+- Gemini en plan gratuito: Google puede usar lo enviado para mejorar sus productos, con posible revisión humana. Para información de negocios pesa en contra.
+- **Ollama es local**: Vercel no puede alcanzar `localhost`. El respaldo local solo funciona al ejecutar la app en tu computador (`npm run dev` con `.env.local`). Para que haya respaldo también en Vercel, usa como `AI2_*` otro proveedor en la nube con plan gratuito.
+- Modelos locales probados el 2026-10-20 en un M1 Pro de 16 GB: `llama3.1` (8B) responde en 3–20 s; `qwen3:14b` en ~30 s y escribe su razonamiento entre `<think>`, que el lector ignora.
+
+**Lo aprendido con modelos reales (y ya corregido en el código)**
+- Un modelo local marcó «hipótesis con valor 0» criterios sobre los que decía no tener información → ahora se tratan como desconocidos.
+- Marcó «confirmado» la compatibilidad geográfica por estar en Bogotá → la IA ya no puede dejar nada «confirmado».
+- Devolvió `"value": null` para «no sé» → ahora se acepta.
+- Las respuestas varían entre ejecuciones; por eso todo es propuesta que una persona revisa.

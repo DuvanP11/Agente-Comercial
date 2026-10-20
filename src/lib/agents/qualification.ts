@@ -1,15 +1,21 @@
 import { z } from "zod";
-import { inventedClaims, SYSTEM_RULES, untrusted } from "../ai/guards";
+import { inventedClaims, lenientNumber, lenientString, lenientStrings, SYSTEM_RULES, untrusted } from "../ai/guards";
 import { safeWebUrl } from "../contact-links";
 import { CRITERION_LABELS, DEFAULT_WEIGHTS, type CriterionKey } from "../scoring/score";
 import type { AgentDef } from "./core";
 
 const KEYS = Object.keys(DEFAULT_WEIGHTS) as [CriterionKey, ...CriterionKey[]];
 /**
- * Solo estos criterios pueden quedar "confirmados": son los que las evidencias que tenemos (rubro, dirección, contacto)
- * pueden demostrar. Necesidad logística, volumen o frecuencia nunca se confirman con datos de directorio.
+ * Criterios que la IA puede dejar "confirmados": NINGUNO por ahora. Con datos de directorio solo se demuestra que el negocio
+ * existe en un rubro y una dirección; "ajuste al cliente ideal" y "compatibilidad geográfica" dependen de cómo PIBOX define
+ * su cliente ideal y su cobertura, que aún no están configurados (módulo Configuración, pendiente). Probado con un modelo
+ * real: marcó "confirmado" la compatibilidad solo porque el negocio "se encuentra en Bogotá". La IA propone hasta
+ * "inferencia"; confirmar con evidencia lo hace la persona en Analizar clientes.
  */
-export const CONFIRMABLE: CriterionKey[] = ["icp_fit", "geo_compatibility"];
+export const CONFIRMABLE: CriterionKey[] = [];
+
+/** Frases con las que un modelo dice "no sé": eso es DESCONOCIDO, nunca un valor bajo (contaría como dato malo). */
+const NO_INFO = /no se dispone|sin informaci[oó]n|no hay (datos|informaci[oó]n)|desconoc|no (es|est[aá]) posible (determinar|evaluar)|no se puede (determinar|evaluar|saber)|informaci[oó]n insuficiente|no (hay|existe) (evidencia|base)/i;
 /** Los decide el código, no el modelo. */
 const DETERMINISTIC: CriterionKey[] = ["contact_channel", "evidence_quality"];
 
@@ -26,11 +32,11 @@ const output = z.object({
   assessments: z.array(z.object({
     criterion: z.string(),
     kind: z.enum(["confirmed", "inferred", "hypothesis", "unknown"]),
-    value: z.number(),
-    evidenceIds: z.array(z.string()).default([]),
-    note: z.string().default(""),
+    value: lenientNumber,
+    evidenceIds: lenientStrings,
+    note: lenientString,
   })),
-  summary: z.string().default(""),
+  summary: lenientString,
 });
 
 export interface ProposedAssessment { criterion: CriterionKey; kind: "confirmed" | "inferred" | "hypothesis" | "unknown"; value: number; evidenceIds: string[]; note: string; origin: "model" | "rule" }
@@ -48,7 +54,7 @@ export const qualificationAgent: AgentDef<QualificationInput, QualificationPropo
       KEYS.filter((k) => !DETERMINISTIC.includes(k)).map((k) => `${k} (${CRITERION_LABELS[k]})`).join("; ") + ". " +
       `Devuelve {"assessments":[{"criterion":string,"kind":"confirmed"|"inferred"|"hypothesis"|"unknown","value":0..1,"evidenceIds":string[],"note":string}],"summary":string}. ` +
       `Reglas: usa "confirmed" SOLO si citas ids de la lista de evidencias que lo demuestren (y solo para icp_fit y geo_compatibility); ` +
-      `usa "inferred" para deducciones razonables y "hypothesis" para suposiciones por validar; si no hay base, "unknown" con value 0. ` +
+      `usa "inferred" para deducciones razonables y "hypothesis" para suposiciones por validar; si no hay base para valorar un criterio, usa "unknown" (NUNCA "hypothesis" con value 0: un valor bajo no es lo mismo que no saber). ` +
       `No supongas volumen, frecuencia ni necesidad logística como hechos. Cada note: máximo 200 caracteres y sin cifras que no estén en los datos.`,
     user: untrusted(i),
   }),
@@ -67,9 +73,11 @@ export const qualificationAgent: AgentDef<QualificationInput, QualificationPropo
       seen.add(key);
 
       let kind = a.kind;
+      // "No hay información" dicho como hipótesis de valor 0 se trata como lo que es: desconocido.
+      if (kind !== "unknown" && NO_INFO.test(a.note)) { kind = "unknown"; warnings.push(`${CRITERION_LABELS[key]}: el modelo dijo no tener información; se trató como «desconocido», no como un valor bajo.`); }
       const ids = a.evidenceIds.filter((id) => validIds.has(id));
       if (ids.length !== a.evidenceIds.length) warnings.push(`${CRITERION_LABELS[key]}: se descartaron evidencias que no existen.`);
-      if (kind === "confirmed" && !CONFIRMABLE.includes(key)) { kind = "inferred"; warnings.push(`${CRITERION_LABELS[key]}: no puede confirmarse con datos de directorio; pasó a «inferencia».`); }
+      if (kind === "confirmed" && !CONFIRMABLE.includes(key)) { kind = "inferred"; warnings.push(`${CRITERION_LABELS[key]}: la IA no puede dejarlo «confirmado» (eso lo decide una persona con evidencia); pasó a «inferencia».`); }
       if (kind === "confirmed" && ids.length === 0) { kind = "hypothesis"; warnings.push(`${CRITERION_LABELS[key]}: se marcó «confirmado» sin evidencia; pasó a «hipótesis».`); }
 
       let note = a.note.trim().slice(0, 300);
