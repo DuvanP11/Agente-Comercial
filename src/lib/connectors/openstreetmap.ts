@@ -5,8 +5,8 @@ const NOMINATIM = "https://nominatim.openstreetmap.org/search";
 const OVERPASS_DEFAULT = "https://overpass-api.de/api/interpreter";
 const USER_AGENT = "pibox-commercial-intelligence/0.1 (hneira@picap.co)";
 /** Cada llamada externa tiene tope; la búsqueda completa también, para que Vercel nunca mate la función en silencio. */
-const REQUEST_TIMEOUT_MS = 12_000;
-const SEARCH_BUDGET_MS = 45_000;
+const REQUEST_TIMEOUT_MS = 25_000;
+const SEARCH_BUDGET_MS = 52_000;
 const withTimeout = (signal?: AbortSignal) => (signal ? AbortSignal.any([signal, AbortSignal.timeout(REQUEST_TIMEOUT_MS)]) : AbortSignal.timeout(REQUEST_TIMEOUT_MS));
 const ATTRIBUTION = "Datos © colaboradores de OpenStreetMap (licencia ODbL). Completitud variable: pocos negocios traen teléfono o web.";
 
@@ -60,7 +60,7 @@ export class OpenStreetMapConnector implements Connector {
 
   constructor(
     private readonly fetchImpl: typeof fetch = fetch,
-    private readonly overpassUrls: string[] = [process.env.OVERPASS_URL || OVERPASS_DEFAULT],
+    private readonly overpassUrls: string[] = (process.env.OVERPASS_URL || OVERPASS_DEFAULT).split(",").map((u) => u.trim()).filter(Boolean),
     private readonly sleep: (ms: number) => Promise<void> = (ms) => new Promise((r) => setTimeout(r, ms)),
   ) {}
 
