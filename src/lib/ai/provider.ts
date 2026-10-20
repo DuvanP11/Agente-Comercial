@@ -31,12 +31,16 @@ const PREFIXES = ["AI", "AI2", "AI3"] as const;
 function readConfig(env: Record<string, string | undefined>, prefix: string): AiConfig | null {
   const baseUrl = env[`${prefix}_BASE_URL`]?.trim(), apiKey = env[`${prefix}_API_KEY`]?.trim(), model = env[`${prefix}_MODEL`]?.trim();
   if (!baseUrl || !model) return null;
+  if (!isHttpUrl(baseUrl)) return null; // p. ej. una clave pegada por error en la variable de la dirección
   // Ollama local no exige clave; los demás sí.
   if (!apiKey && !isLocalUrl(baseUrl)) return null;
   const t = Number(env[`${prefix}_TIMEOUT_MS`]);
   return { baseUrl: baseUrl.replace(/\/+$/, ""), apiKey: apiKey ?? "", model, timeoutMs: Number.isFinite(t) && t >= 5_000 && t <= 120_000 ? t : 45_000 };
 }
 
+export function isHttpUrl(v: string): boolean {
+  try { const u = new URL(v); return (u.protocol === "https:" || u.protocol === "http:") && !!u.hostname; } catch { return false; }
+}
 export const isLocalUrl = (u: string) => /^https?:\/\/(localhost|127\.0\.0\.1|\[::1\])(:|\/|$)/.test(u);
 const hostOf = (u: string) => { try { return new URL(u).host; } catch { return ""; } };
 
@@ -62,6 +66,12 @@ export function aiStatus(env: Record<string, string | undefined> = process.env):
   const onServerless = !!env.VERCEL || env.NODE_ENV === "production";
   // Avisos por proveedor a medio configurar (para que el usuario no crea que el respaldo está activo).
   PREFIXES.forEach((p, i) => {
+    const url = env[`${p}_BASE_URL`]?.trim();
+    if (url && !isHttpUrl(url)) {
+      // Nunca se repite el valor: si es una clave, no debe salir en pantalla.
+      warnings.push(`${ROLES[i]}: ${p}_BASE_URL no es una dirección web válida (debe empezar por https://). Si pegaste ahí una clave, muévela a ${p}_API_KEY y, por precaución, crea una clave nueva y desactiva la anterior.`);
+      return;
+    }
     const touched = [`${p}_BASE_URL`, `${p}_MODEL`, `${p}_API_KEY`].some((k) => env[k]?.trim());
     if (touched && !readConfig(env, p)) warnings.push(`${ROLES[i]}: configuración incompleta (${p}_BASE_URL, ${p}_MODEL y ${p}_API_KEY); se ignora.`);
   });

@@ -231,3 +231,30 @@ describe("probar conexión (sin enviar datos de negocio)", () => {
     expect(urls).toEqual(["https://api.groq.com/openai/v1/models"]);
   });
 });
+
+
+describe("clave pegada por error en AI_BASE_URL", () => {
+  const bad = { AI_BASE_URL: "gsk_ESTA_ES_UNA_CLAVE_SECRETA", AI_MODEL: "modelo", AI_API_KEY: "otra" };
+  it("no cuenta como proveedor configurado", () => {
+    expect(aiConfigsFromEnv(bad)).toEqual([]);
+    expect(aiStatus(bad).state).toBe("not_configured");
+  });
+  it("avisa del error exacto SIN repetir el valor (sería filtrar la clave)", () => {
+    const s = aiStatus(bad);
+    const text = JSON.stringify(s);
+    expect(s.warnings.join(" ")).toMatch(/AI_BASE_URL no es una dirección web válida.*muévela a AI_API_KEY.*crea una clave nueva/);
+    expect(text).not.toContain("gsk_ESTA_ES_UNA_CLAVE_SECRETA");
+  });
+  it("tampoco se prueba conexión ni se llama a ninguna URL con ese valor", async () => {
+    let called = false;
+    const r = await checkProviders(bad, (async () => { called = true; return json({}); }) as unknown as typeof fetch);
+    expect(r).toEqual([]); expect(called).toBe(false);
+  });
+  it("una dirección sin esquema (api.groq.com/openai/v1) también se rechaza y se avisa", () => {
+    const s = aiStatus({ AI_BASE_URL: "api.groq.com/openai/v1", AI_MODEL: "m", AI_API_KEY: "k" });
+    expect(s.state).toBe("not_configured"); expect(s.warnings.join(" ")).toMatch(/debe empezar por https/);
+  });
+  it("una dirección correcta sigue funcionando", () => {
+    expect(aiStatus({ AI_BASE_URL: "https://api.groq.com/openai/v1", AI_MODEL: "m", AI_API_KEY: "k" }).state).toBe("connected");
+  });
+});
