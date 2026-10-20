@@ -10,3 +10,26 @@ export function mapSearchLink(address: string, city?: string | null): string {
   const q = [address, city].filter(Boolean).join(", ");
   return `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(q)}`;
 }
+
+/** Enlace web seguro: solo http/https (rechaza javascript:, data:, etc.). Sin esquema se asume https. */
+export function safeWebUrl(value: string | null | undefined): string | null {
+  const v = (value ?? "").trim();
+  if (!v || /\s/.test(v)) return null;
+  const withScheme = /^[a-z][a-z0-9+.-]*:/i.test(v) ? v : `https://${v}`;
+  try {
+    const u = new URL(withScheme);
+    return (u.protocol === "https:" || u.protocol === "http:") && u.hostname.includes(".") ? u.toString() : null;
+  } catch { return null; }
+}
+
+/** Enlace mailto solo si el correo tiene formato válido. */
+export function mailtoLink(value: string | null | undefined): string | null {
+  const v = (value ?? "").trim();
+  return /^[^\s@<>"]+@[^\s@<>"]+\.[^\s@<>"]+$/.test(v) ? `mailto:${v}` : null;
+}
+
+/** Enlace tel: solo con dígitos (y + inicial). */
+export function telLink(value: string | null | undefined): string | null {
+  const d = (value ?? "").replace(/[^\d+]/g, "");
+  return /^\+?\d{7,15}$/.test(d) ? `tel:${d}` : null;
+}

@@ -5,7 +5,7 @@ import { getDb } from "@/lib/db/client";
 import { activities, clients, duplicateReviews, evidence, prospects } from "@/lib/db/schema";
 import { findContradictions } from "@/lib/evidence/types";
 import { duplicateMessage } from "@/lib/dedup/match";
-import { mapSearchLink } from "@/lib/contact-links";
+import { mailtoLink, mapSearchLink, safeWebUrl, telLink } from "@/lib/contact-links";
 import { CRITERION_LABELS, type ScoreResult } from "@/lib/scoring/score";
 import { Composer } from "./Composer";
 import { resolveDuplicate } from "./actions";
@@ -59,9 +59,9 @@ export default async function Ficha({ params }: { params: Promise<{ id: string }
 
       <section className="card grid gap-2 text-sm md:grid-cols-2" aria-label="Datos">
         <div><b>Dirección:</b> {p.address ?? "No disponible"} {p.address && <a className="underline" target="_blank" rel="noopener noreferrer" href={mapSearchLink(p.address, p.city)}>Buscar en Google Maps</a>}</div>
-        <div><b>Teléfono:</b> {p.phone ?? "No encontrado"} {p.phone && !p.phoneKey && <span className="badge badge-warn">formato no reconocido</span>}</div>
-        <div><b>Sitio web:</b> {p.website ?? "No encontrado"}</div>
-        <div><b>Correo:</b> {p.email ?? "No encontrado"}</div>
+        <div><b>Teléfono:</b> {p.phone ? (telLink(p.phone) ? <a className="underline" href={telLink(p.phone)!}>{p.phone}</a> : p.phone) : "No encontrado"} {p.phone && !p.phoneKey && <span className="badge badge-warn">formato no reconocido</span>}</div>
+        <div><b>Sitio web:</b> {p.website ? (safeWebUrl(p.website) ? <a className="break-all underline" target="_blank" rel="noopener noreferrer" href={safeWebUrl(p.website)!}>{p.website}</a> : p.website) : "No encontrado"}</div>
+        <div><b>Correo:</b> {p.email ? (mailtoLink(p.email) ? <a className="break-all underline" href={mailtoLink(p.email)!}>{p.email}</a> : p.email) : "No encontrado"}</div>
       </section>
 
       <section className="card" aria-label="Calificación">

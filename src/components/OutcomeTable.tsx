@@ -1,4 +1,5 @@
 import Link from "next/link";
+import { mailtoLink, safeWebUrl, telLink } from "@/lib/contact-links";
 import type { IngestOutcome } from "@/lib/services/prospects";
 
 const BADGE = { new: "badge-ok", excluded_duplicate: "badge-bad", needs_review: "badge-warn", already_stored: "" } as const;
@@ -18,8 +19,12 @@ export function OutcomeTable({ outcomes }: { outcomes: IngestOutcome[] }) {
             <td><b>{o.name}</b>{o.category && <div className="text-xs text-muted">{o.category}</div>}
               <Link className="text-xs underline" href={`/prospectos/${o.prospectId}`}>Ver ficha</Link></td>
             <td>{o.address ?? <Dash />}</td>
-            <td>{o.phone ?? <Dash />}</td>
-            <td>{o.website || o.email ? <>{o.website}{o.website && o.email ? <br /> : null}{o.email}</> : <Dash />}</td>
+            <td>{o.phone ? (telLink(o.phone) ? <a className="underline" href={telLink(o.phone)!}>{o.phone}</a> : o.phone) : <Dash />}</td>
+            <td>{o.website || o.email ? <>
+              {o.website && (safeWebUrl(o.website) ? <a className="break-all underline" target="_blank" rel="noopener noreferrer" href={safeWebUrl(o.website)!}>{o.website}</a> : <span className="break-all">{o.website}</span>)}
+              {o.website && o.email ? <br /> : null}
+              {o.email && (mailtoLink(o.email) ? <a className="break-all underline" href={mailtoLink(o.email)!}>{o.email}</a> : <span className="break-all">{o.email}</span>)}
+            </> : <Dash />}</td>
             <td>{o.sourceUrl && /^https?:\/\//.test(o.sourceUrl) ? <a className="underline" target="_blank" rel="noopener noreferrer" href={o.sourceUrl}>Ver en OpenStreetMap</a> : <span className="text-sm">{o.sourceUrl ?? "—"}</span>}</td>
             <td className="min-w-64">
               <span className={`badge ${BADGE[o.status]}`}>{LABEL[o.status]}</span>
