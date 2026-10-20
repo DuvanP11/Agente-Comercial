@@ -13,5 +13,4 @@ export const PENDING_CONNECTORS = [
   { id: "web_research", label: "Investigación web", why: "Requiere proveedor de búsqueda y respetar robots.txt/condiciones (fase 5)." },
   { id: "gmail", label: "Gmail (OAuth 2.0)", why: "Fase 7." },
   { id: "whatsapp_business", label: "WhatsApp Business Platform", why: "Fase 7. Hoy solo se abre un enlace wa.me para que el usuario revise y envíe." },
-  { id: "ai_provider", label: "Proveedor de IA", why: "Fase 4: interpretación de lenguaje natural, análisis y redacción." },
 ];

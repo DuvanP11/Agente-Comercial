@@ -1,9 +1,11 @@
 import { getConnectors, PENDING_CONNECTORS } from "@/lib/connectors/registry";
 import { authConfigured } from "@/lib/auth";
+import { aiStatus } from "@/lib/ai/provider";
 
 export const dynamic = "force-dynamic";
 
 export default function Integraciones() {
+  const ai = aiStatus();
   const rows = getConnectors().map((c) => ({ id: c.id, label: c.label, status: c.status() }));
   return (
     <div className="space-y-4">
@@ -19,6 +21,9 @@ export default function Integraciones() {
             <tr><td>Base de datos</td>
               <td><span className={`badge ${process.env.DATABASE_URL ? "badge-ok" : "badge-warn"}`}>{process.env.DATABASE_URL ? "PostgreSQL" : "PGlite local (solo desarrollo)"}</span></td>
               <td className="text-sm">Variable <code>DATABASE_URL</code>. Obligatoria en producción.</td></tr>
+            <tr><td>Proveedor de IA (compatible con OpenAI)</td>
+              <td><span className={`badge ${ai.state === "connected" ? "badge-ok" : "badge-warn"}`}>{ai.state === "connected" ? "Configurado (no probado)" : "Pendiente"}</span></td>
+              <td className="text-sm">{ai.state === "connected" ? `Modelo ${ai.model} en ${ai.host}.` : `Falta ${ai.missing.join(", ")}. ${ai.howTo}`}</td></tr>
             {rows.map((r) => (
               <tr key={r.id}><td>{r.label}</td>
                 <td><span className={`badge ${r.status.state === "connected" ? "badge-ok" : "badge-warn"}`}>{r.status.state === "connected" ? "Clave presente (no probada)" : r.status.state === "not_configured" ? "Pendiente" : "Error"}</span></td>

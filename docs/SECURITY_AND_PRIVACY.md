@@ -7,6 +7,8 @@
 - Secretos solo en variables de servidor; ninguna `NEXT_PUBLIC_*`.
 - `audit_log` para importaciones, ingestas y decisiones de duplicados.
 
+- IA: la clave solo en variables de entorno; el estado de la integración nunca la expone; errores del proveedor se muestran sin detalles internos; no se envían teléfonos ni correos al modelo; datos de terceros viajan marcados como no confiables y la salida se valida con reglas deterministas (ver `AGENTS_AND_SKILLS.md`).
+
 ## NO implementado (obligatorio antes de usar con datos reales en producción)
 - Usuarios individuales, roles y aislamiento por organización (hoy: una contraseña compartida y una org).
 - Límite de intentos de login y de peticiones.

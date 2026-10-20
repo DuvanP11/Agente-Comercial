@@ -7,6 +7,6 @@
 | LinkedIn | No implementada | Solo con integración autorizada por LinkedIn; mientras tanto flujo asistido por el usuario. |
 | Gmail | No implementada | OAuth 2.0, permiso mínimo `gmail.send`/`gmail.compose`; tokens cifrados en servidor. |
 | WhatsApp | Solo enlace `wa.me` (abre el chat, no envía) | WhatsApp Business Platform requiere plantillas aprobadas y consentimiento. |
-| Proveedor de IA | No seleccionado | Pendiente P-2. |
+| Proveedor de IA (compatible con OpenAI) | Capa implementada y probada con proveedor simulado; **sin probar contra un proveedor real** (no hay clave) | `AI_BASE_URL`, `AI_MODEL`, `AI_API_KEY` (no necesaria con Ollama local), `AI_TIMEOUT_MS` opcional. Sirve OpenAI, Groq, OpenRouter, Gemini (endpoint compatible), Ollama… Verifica condiciones vigentes y plan gratuito de cada proveedor, y que permitan enviar información de negocios. |
 
 La pantalla **Integraciones** calcula el estado desde el entorno real: “Clave presente (no probada)” nunca se presenta como “conectado y funcionando”.

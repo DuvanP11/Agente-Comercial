@@ -210,3 +210,27 @@ export const campaignProspects = pgTable("campaign_prospects", {
   notes: text("notes"),
   createdAt: ts("created_at"),
 }, (t) => [uniqueIndex("campaign_prospect_uq").on(t.campaignId, t.prospectId), index("cp_org_idx").on(t.orgId)]);
+
+
+/** Registro de cada ejecución de un agente de IA: qué recibió, qué devolvió, si falló y por qué. */
+export const agentRuns = pgTable("agent_runs", {
+  id: id(),
+  orgId: text("org_id").notNull().references(() => organizations.id),
+  agent: text("agent").notNull(),
+  /** running | completed | failed */
+  status: text("status").notNull(),
+  entityType: text("entity_type"),
+  entityId: text("entity_id"),
+  input: jsonb("input"),
+  output: jsonb("output"),
+  warnings: jsonb("warnings"),
+  error: text("error"),
+  model: text("model"),
+  attempts: integer("attempts").notNull().default(0),
+  promptTokens: integer("prompt_tokens"),
+  completionTokens: integer("completion_tokens"),
+  durationMs: integer("duration_ms"),
+  actor: text("actor"),
+  startedAt: ts("started_at"),
+  finishedAt: timestamp("finished_at", { withTimezone: true }),
+}, (t) => [index("agent_runs_org_idx").on(t.orgId, t.startedAt)]);

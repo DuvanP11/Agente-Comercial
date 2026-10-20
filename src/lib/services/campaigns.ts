@@ -83,7 +83,7 @@ export async function campaignDetail(db: Db, orgId: string, campaignId: string) 
   return { campaign: c, items, funnel: funnel(items.map((i) => i.cp.status as CpStatus)) };
 }
 
-async function loadCp(db: Db, orgId: string, cpId: string) {
+export async function loadCp(db: Db, orgId: string, cpId: string) {
   const [row] = await db.select({ cp: campaignProspects, p: prospects, c: campaigns }).from(campaignProspects)
     .innerJoin(prospects, eq(prospects.id, campaignProspects.prospectId))
     .innerJoin(campaigns, eq(campaigns.id, campaignProspects.campaignId))
