@@ -17,6 +17,10 @@ const output = z.object({
 });
 export type InterpretedSearch = { city: string | null; zones: string[]; categories: string[]; maxResults: number | null; excludeTerms: string[]; notes: string | null; suggestions: string[] };
 
+/** Las 20 localidades de Bogotá. Si el modelo devuelve una como «ciudad», en realidad es una zona de Bogotá. */
+export const BOGOTA_LOCALIDADES = ["usaquen", "chapinero", "santa fe", "san cristobal", "usme", "tunjuelito", "bosa", "kennedy", "fontibon", "engativa", "suba", "barrios unidos", "teusaquillo", "los martires", "antonio narino", "puente aranda", "la candelaria", "rafael uribe uribe", "ciudad bolivar", "sumapaz"];
+const isLocalidad = (x: string) => BOGOTA_LOCALIDADES.includes(stripAccents(x).toLowerCase().trim());
+
 /** Palabras que indican una frase y no un rubro o un nombre: con ellas no se usa el texto como categoría. */
 const FILLER = new Set(["busco", "buscar", "quiero", "necesito", "algo", "cosas", "cosa", "negocios", "negocio", "empresas", "empresa", "clientes", "cliente", "por", "favor", "en", "de", "del", "la", "el", "los", "las", "un", "una", "y", "o", "con", "para", "que", "hola", "me", "dame", "mostrar", "muestra"]);
 
@@ -122,10 +126,17 @@ export const searchInterpreter: AgentDef<z.infer<typeof input>, InterpretedSearc
       warnings.push(`La IA devolvió «${categories.join(", ")}», que no se parece a lo que escribiste; se usó tu texto «${asWritten}».`);
       categories.splice(0, categories.length, asWritten);
     }
-    const city = o.city ? safeTerm(o.city) || null : null;
-    if (city && !appearsIn(city, text)) warnings.push(`La ciudad «${city}» no aparece en tu texto: verifícala antes de buscar.`);
+    let city = o.city ? safeTerm(o.city) || null : null;
+    const zonesIn = o.zones.map(safeTerm).filter(Boolean);
+    // «Suba» o «Chapinero» no son ciudades: son localidades de Bogotá. Se mueven a zonas y la ciudad pasa a ser Bogotá.
+    if (city && isLocalidad(city)) {
+      warnings.push(`«${city}» es una localidad de Bogotá: se tomó como zona y la ciudad como Bogotá.`);
+      if (!zonesIn.some((z) => stripAccents(z).toLowerCase() === stripAccents(city!).toLowerCase())) zonesIn.unshift(city);
+      city = "Bogotá";
+    }
+    if (city && !appearsIn(city, text) && !(city === "Bogotá" && zonesIn.some(isLocalidad))) warnings.push(`La ciudad «${city}» no aparece en tu texto: verifícala antes de buscar.`);
     if (!city) warnings.push("No se detectó la ciudad: complétala a mano.");
-    const zones = o.zones.map(safeTerm).filter(Boolean).slice(0, 10);
+    const zones = zonesIn.slice(0, 10);
     for (const z of zones) if (!appearsIn(z, text)) warnings.push(`La zona «${z}» no aparece en tu texto: verifícala.`);
     for (const c of categories) if (!relatedToText(c, text)) warnings.push(`El rubro «${c}» es una interpretación del modelo: confirma que es lo que buscas.`);
     let maxResults = o.maxResults;

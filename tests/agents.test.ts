@@ -106,6 +106,29 @@ describe("respaldo de proveedor en un agente", () => {
   });
 });
 
+describe("localidades de Bogotá mal puestas como ciudad (caso real: «en Suba»)", () => {
+  const J = (o: object) => JSON.stringify({ city: null, zones: [], categories: ["droguería"], maxResults: null, excludeTerms: [], notes: null, suggestions: [], ...o });
+  it("«Suba» como ciudad pasa a zona y la ciudad es Bogotá", async () => {
+    const r = await interpretSearch(db, org, "droguerías en Suba", fake(J({ city: "Suba" })).p, "t");
+    expect(r.ok).toBe(true); expect(r.output).toMatchObject({ city: "Bogotá", zones: ["Suba"] });
+    expect(r.warnings.join(" ")).toMatch(/«Suba» es una localidad de Bogotá/);
+    expect(r.warnings.join(" ")).not.toMatch(/no aparece en tu texto/); // Bogotá se deduce, no se inventa
+  });
+  it("con tildes y mayúsculas, y sin duplicar si el modelo ya la puso en zonas", async () => {
+    const r = await interpretSearch(db, org, "droguerías en Usaquén", fake(J({ city: "USAQUÉN", zones: ["Usaquén"] })).p, "t");
+    expect(r.output).toMatchObject({ city: "Bogotá", zones: ["Usaquén"] });
+  });
+  it("una ciudad real no se toca", async () => {
+    const r = await interpretSearch(db, org, "droguerías en Medellín", fake(J({ city: "Medellín" })).p, "t");
+    expect(r.output).toMatchObject({ city: "Medellín", zones: [] });
+  });
+  it("las 20 localidades están y ninguna ciudad de otra región cae por error", async () => {
+    const { BOGOTA_LOCALIDADES } = await import("@/lib/agents/searchInterpreter");
+    expect(BOGOTA_LOCALIDADES).toHaveLength(20);
+    for (const c of ["Cali", "Medellín", "Barranquilla", "Bogotá", "Soacha", "Chía"]) expect(BOGOTA_LOCALIDADES).not.toContain(c.toLowerCase());
+  });
+});
+
 describe("agente: interpretación más útil y sin inventos", () => {
   const J = (o: object) => JSON.stringify({ city: null, zones: [], categories: [], maxResults: null, excludeTerms: [], notes: null, suggestions: [], ...o });
   it("«Ropa» (4 letras) ya se puede interpretar", async () => {
