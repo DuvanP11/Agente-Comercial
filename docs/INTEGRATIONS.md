@@ -39,3 +39,10 @@ Casilla en Buscar clientes. En OpenStreetMap el filtro va **dentro de la consult
 
 ## Límite de 60 s del servidor (2026-10-21)
 Vercel **corta toda petición que pase de 60 s** y el navegador recibe una respuesta inesperada («Application error: a client-side exception»). El conector de OpenStreetMap ahora respeta un presupuesto: Overpass hasta 30 s en total, ninguna llamada nueva después de 44 s (lo omitido se avisa en pantalla) y cada espera está acotada por ese límite. Medido en vivo: 3 zonas × 2 rubros = 34 s. Además, la pantalla captura el fallo de la petición y muestra un mensaje en vez de romperse, y las búsquedas que el servidor cortó a medias se marcan como «Interrumpida» pasados 3 minutos.
+
+
+## Zonas, rubros equivalentes y avisos (2026-10-21)
+- **Ubicar la zona:** Nominatim devuelve varios candidatos; se elige el *área* más grande de tipo zona/lugar (límite administrativo, barrio, uso de suelo), no el primer punto. «Paloquemao» se resolvía como una estación de bus de ~100 m → 0 resultados; ahora usa el complejo de ~0,9 km. Toda zona se amplía, centrada, a un mínimo de ~1,3 km.
+- **Respaldo de texto:** busca dentro del recuadro de la zona (`viewbox` + `bounded=1`), no con el nombre de la zona en la frase. Mismo escenario: 0 → 20 resultados.
+- **Rubros equivalentes:** los que hacen la misma consulta («ferretería», «artículos de ferretería», «ferretería de bricolaje») se buscan una sola vez y se avisa. El intérprete de IA solo devuelve hasta 3 rubros como búsqueda principal; el resto pasa a sugerencias.
+- **Avisos consolidados:** una línea por causa (no una por rubro). Si una zona pequeña da pocos resultados se sugiere ampliar a la localidad.

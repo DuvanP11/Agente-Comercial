@@ -41,6 +41,8 @@ export interface ConnectorResult {
   prospects: RawProspect[];
   /** Errores parciales: se informan, nunca se rellenan con datos inventados. */
   errors: string[];
+  /** Avisos informativos que no son fallos (p. ej. rubros equivalentes unificados). */
+  notes?: string[];
   /** Costo estimado en USD si el proveedor cobra por consulta. */
   estimatedCostUsd?: number;
 }

@@ -118,7 +118,7 @@ describe("varios teléfonos en un mismo campo (caso real de OpenStreetMap: «+57
 });
 
 
-import { describeSearch, keptFieldNames, mergeInterpretation } from "@/lib/search-form";
+import { describeSearch, fewResultsNote, keptFieldNames, mergeInterpretation } from "@/lib/search-form";
 const out = (o: Partial<{ city: string | null; zones: string[]; categories: string[]; excludeTerms: string[]; maxResults: number | null }> = {}) =>
   ({ city: null, zones: [], categories: ["cosmética"], excludeTerms: [], maxResults: null, notes: null, suggestions: [], ...o });
 const form = { city: "Bogotá", zones: "Chapinero", categories: "", excludeTerms: "mayorista", maxResults: "20" };
@@ -154,5 +154,22 @@ describe("frase «Entendí»", () => {
   it("nombra en llano lo que se conservó del formulario", () => {
     const { source } = mergeInterpretation(form, out());
     expect(keptFieldNames(source)).toEqual(["la ciudad", "las zonas", "las exclusiones", "el máximo de resultados"]);
+  });
+});
+
+
+describe("aviso de pocos resultados en zonas pequeñas (caso real: Paloquemao → 1 resultado)", () => {
+  it("un barrio con pocos resultados sugiere ampliar", () => {
+    expect(fewResultsNote(["Paloquemao"], 1)).toMatch(/Pocos resultados.*«Paloquemao».*localidad completa/);
+  });
+  it("no avisa si hay suficientes, si no hay zona, o si la zona ya es una localidad completa", () => {
+    expect(fewResultsNote(["Paloquemao"], 12)).toBeNull();
+    expect(fewResultsNote([], 1)).toBeNull();
+    expect(fewResultsNote(["Chapinero"], 1)).toBeNull();
+    expect(fewResultsNote(["Los Mártires", "Suba"], 0)).toBeNull();
+  });
+  it("con una localidad y un barrio, menciona solo el barrio", () => {
+    const n = fewResultsNote(["Suba", "Paloquemao"], 2)!;
+    expect(n).toContain("Paloquemao"); expect(n).not.toContain("Suba");
   });
 });

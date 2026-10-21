@@ -46,6 +46,18 @@ export function safeTerm(s: string): string {
   return s.replace(/[^\p{L}\p{N} ]/gu, " ").replace(/\s+/g, " ").trim().slice(0, 60);
 }
 
+/**
+ * Clave de equivalencia de un rubro: dos rubros con la misma clave hacen EXACTAMENTE la misma consulta en OpenStreetMap
+ * («ferretería», «artículos de ferretería», «ferretería de bricolaje»…), así que se buscan una sola vez.
+ * Los que no están en el diccionario se buscan por nombre y solo son equivalentes si son iguales.
+ */
+export function categoryKey(category: string): string {
+  const term = safeTerm(category);
+  const flat = stripAccents(term).toLowerCase();
+  const i = TAGS.findIndex(([stems]) => stems.some((x) => flat.includes(x)));
+  return i >= 0 ? `tags:${i}` : `name:${flat}`;
+}
+
 export function filtersFor(category: string): string[] {
   const term = safeTerm(category);
   const flat = stripAccents(term).toLowerCase();
@@ -58,6 +70,30 @@ export function filtersFor(category: string): string[] {
 export function phraseFor(category: string): string | null {
   const flat = stripAccents(safeTerm(category)).toLowerCase();
   return TAGS.find(([stems]) => stems.some((x) => flat.includes(x)))?.[2] ?? null;
+}
+
+/** Tamaño mínimo de la zona de búsqueda (~1,3 km): un barrio que Nominatim resuelve como un punto (estación, parque) quedaría minúsculo. */
+export const MIN_ZONE_DEG = 0.012;
+const AREA_CLASSES = new Set(["boundary", "place", "landuse", "leisure", "natural"]);
+
+/**
+ * De varios candidatos de Nominatim elige el AREA más grande de tipo lugar/zona, no el primero:
+ * «Paloquemao» devuelve primero una estación de bus (100 m) y luego el complejo de 0,9 km, que es el que sirve.
+ */
+export function pickBestArea(rows: { boundingbox?: string[]; category?: string }[]): Bbox | null {
+  const parsed = rows.map((r) => ({ r, b: r.boundingbox?.map(Number) })).filter((x): x is { r: typeof x.r; b: number[] } => !!x.b && x.b.length === 4 && !x.b.some(Number.isNaN));
+  if (parsed.length === 0) return null;
+  const area = (b: number[]) => (b[1] - b[0]) * (b[3] - b[2]);
+  const eligible = parsed.filter((x) => !x.r.category || AREA_CLASSES.has(x.r.category));
+  const best = (eligible.length ? eligible : parsed.slice(0, 1)).reduce((a, c) => (area(c.b) > area(a.b) ? c : a));
+  return ensureMinSize([best.b[0], best.b[2], best.b[1], best.b[3]]); // Nominatim: sur, norte, oeste, este
+}
+
+/** Amplía la zona, centrada, hasta el tamaño mínimo. */
+export function ensureMinSize([s, w, n, e]: Bbox, min = MIN_ZONE_DEG): Bbox {
+  const grow = (lo: number, hi: number): [number, number] => (hi - lo >= min ? [lo, hi] : [(lo + hi) / 2 - min / 2, (lo + hi) / 2 + min / 2]);
+  const [s2, n2] = grow(s, n), [w2, e2] = grow(w, e);
+  return [+s2.toFixed(6), +w2.toFixed(6), +n2.toFixed(6), +e2.toFixed(6)];
 }
 
 interface OsmElement { type: string; id: number; lat?: number; lon?: number; center?: { lat: number; lon: number }; tags?: Record<string, string> }
@@ -86,13 +122,10 @@ export class OpenStreetMapConnector implements Connector {
   status(): ConnectorStatus { return { state: "connected" }; } // no requiere clave
 
   private async geocode(place: string, signal?: AbortSignal): Promise<Bbox | null> {
-    const url = `${NOMINATIM}?${new URLSearchParams({ q: place, format: "jsonv2", limit: "1", countrycodes: "co" })}`;
+    const url = `${NOMINATIM}?${new URLSearchParams({ q: place, format: "jsonv2", limit: "6", countrycodes: "co" })}`;
     const res = await this.fetchImpl(url, { headers: { "User-Agent": USER_AGENT }, signal: this.timeoutSignal(signal) });
     if (!res.ok) throw new Error(`Nominatim respondió ${res.status}`);
-    const rows = (await res.json()) as { boundingbox?: string[] }[];
-    const b = rows[0]?.boundingbox?.map(Number);
-    if (!b || b.length !== 4 || b.some(Number.isNaN)) return null;
-    return [b[0], b[2], b[1], b[3]]; // Nominatim: sur, norte, oeste, este
+    return pickBestArea((await res.json()) as { boundingbox?: string[]; category?: string }[]);
   }
 
   private async overpass(query: string, deadline: number, signal?: AbortSignal): Promise<OsmElement[]> {
@@ -121,8 +154,10 @@ export class OpenStreetMapConnector implements Connector {
   }
 
   /** Respaldo cuando Overpass no responde: búsqueda de texto de Nominatim (máx. 40, sin teléfono/web casi nunca). */
-  private async nominatimPlaces(q: string, signal?: AbortSignal) {
-    const url = `${NOMINATIM}?${new URLSearchParams({ q, format: "jsonv2", limit: "40", countrycodes: "co", extratags: "1", addressdetails: "1" })}`;
+  private async nominatimPlaces(q: string, bbox: Bbox, signal?: AbortSignal) {
+    // El recuadro de la zona va como filtro (viewbox + bounded), no como texto: así no depende de cómo Nominatim entienda el nombre de la zona.
+    const [south, west, north, east] = bbox;
+    const url = `${NOMINATIM}?${new URLSearchParams({ q, format: "jsonv2", limit: "40", countrycodes: "co", extratags: "1", addressdetails: "1", viewbox: `${west},${north},${east},${south}`, bounded: "1" })}`;
     const res = await this.fetchImpl(url, { headers: { "User-Agent": USER_AGENT }, signal: this.timeoutSignal(signal) });
     if (!res.ok) throw new Error(`Nominatim respondió ${res.status}`);
     const rows = (await res.json()) as { osm_type?: string; osm_id?: number; name?: string; category?: string; extratags?: Record<string, string>; address?: Record<string, string> }[];
@@ -139,14 +174,14 @@ export class OpenStreetMapConnector implements Connector {
   }
 
   /** Respaldo cuando Overpass no responde (máx. 40). Primero por TIPO de negocio ("cosmetics shop in …"); si no hay, por texto en el nombre. */
-  private async textFallback(category: string, place: string, signal?: AbortSignal): Promise<OsmElement[]> {
+  private async textFallback(category: string, bbox: Bbox, signal?: AbortSignal): Promise<OsmElement[]> {
     const phrase = phraseFor(category);
     if (phrase) {
-      const byType = await this.nominatimPlaces(`${phrase} in ${place}`, signal);
+      const byType = await this.nominatimPlaces(phrase, bbox, signal);
       if (byType.length) return byType;
       await this.sleep(1100); // 1 solicitud por segundo
     }
-    return this.nominatimPlaces(`${safeTerm(category)}, ${place}`, signal);
+    return this.nominatimPlaces(safeTerm(category), bbox, signal);
   }
 
   async search(criteria: SearchCriteria, signal?: AbortSignal): Promise<ConnectorResult> {
@@ -157,12 +192,26 @@ export class OpenStreetMapConnector implements Connector {
     const deadline = start + SEARCH_BUDGET_MS;
     this.hardAt = start + HARD_DEADLINE_MS;
     const outOfTime = () => this.now() > this.hardAt;
+
+    // Rubros equivalentes: una sola búsqueda por cada consulta distinta (ahorra tiempo y evita avisos repetidos).
+    const byKey = new Map<string, string>();
+    const merged: string[] = [];
+    for (const c of criteria.categories) {
+      const k = categoryKey(c);
+      if (safeTerm(c).length < 3) continue;
+      if (byKey.has(k)) merged.push(`«${c}» → «${byKey.get(k)}»`); else byKey.set(k, c);
+    }
+    const categories = [...byKey.values()];
+    const notes: string[] = merged.length ? [`Rubros equivalentes unificados en una sola búsqueda: ${merged.join("; ")}.`] : [];
+    const fallbackFor: string[] = [];   // rubros que cayeron al buscador de texto
+    let fallbackWhy = "";
+    const omitted: string[] = [];       // búsquedas omitidas por falta de tiempo
     const SKIP = (what: string) => `Se omitió ${what} por falta de tiempo (el servidor corta las búsquedas largas): reintenta con menos zonas o rubros.`;
     const zones = criteria.zones.length ? criteria.zones : [""];
 
     for (const zone of zones) {
       if (prospects.length >= criteria.maxResults) break;
-      if (outOfTime()) { errors.push(SKIP(`la zona «${zone || criteria.city}»`)); continue; }
+      if (outOfTime()) { omitted.push(`la zona «${zone || criteria.city}»`); continue; }
       const place = [zone, criteria.city, "Colombia"].filter(Boolean).join(", ");
       let bbox: Bbox | null;
       try {
@@ -171,9 +220,9 @@ export class OpenStreetMapConnector implements Connector {
       } catch (e) { errors.push(`No se pudo ubicar "${place}": ${e instanceof Error ? e.message : String(e)}`); continue; }
       if (!bbox) { errors.push(`No se encontró la ubicación "${place}" en OpenStreetMap.`); continue; }
 
-      for (const category of criteria.categories) {
+      for (const category of categories) {
         if (safeTerm(category).length < 3) { errors.push(`Categoría "${category}" demasiado corta o inválida.`); continue; }
-        if (outOfTime()) { errors.push(SKIP(`«${category}» en ${place}`)); continue; }
+        if (outOfTime()) { omitted.push(`«${category}» en ${place}`); continue; }
         const box = bbox.join(",");
         // Con «solo con contacto», el filtro va DENTRO de la consulta: así el cupo de resultados se llena solo con negocios que lo tienen.
         const parts = filtersFor(category).map((f) => `nwr${f}${criteria.requireContact ? CONTACT_FILTER : ""}(${box});`).join("");
@@ -185,10 +234,10 @@ export class OpenStreetMapConnector implements Connector {
         } catch (e) {
           const why = e instanceof Error ? e.message : String(e);
           try {
-            els = await this.textFallback(category, place, signal);
+            els = await this.textFallback(category, bbox, signal);
             usedFallback = true;
             await this.sleep(1100);
-            errors.push(`"${category}" en ${place}: Overpass no respondió (${why}). Se usó el buscador de texto de OpenStreetMap: resultados menos completos y con nombres a veces genéricos.`);
+            fallbackFor.push(`«${category}» en ${place}`); fallbackWhy ||= why;
           } catch (e2) {
             errors.push(`"${category}" en ${place}: ${why}. El respaldo tampoco respondió (${e2 instanceof Error ? e2.message : String(e2)}).`);
           }
@@ -215,6 +264,12 @@ export class OpenStreetMapConnector implements Connector {
       }
     }
 
+    // Avisos consolidados: una sola línea por causa, no una por rubro.
+    if (fallbackFor.length === 1) errors.push(`${fallbackFor[0]}: Overpass no respondió (${fallbackWhy}). Se usó el buscador de texto de OpenStreetMap: resultados menos completos y con nombres a veces genéricos.`);
+    else if (fallbackFor.length > 1) errors.push(`Overpass no respondió (${fallbackWhy}). Se usó el buscador de texto de OpenStreetMap para ${fallbackFor.length} búsquedas (${fallbackFor.join("; ")}): resultados menos completos y con nombres a veces genéricos.`);
+    if (omitted.length === 1) errors.push(SKIP(omitted[0]));
+    else if (omitted.length > 1) errors.push(`Se omitieron ${omitted.length} búsquedas por falta de tiempo (el servidor corta las búsquedas largas): ${omitted.join("; ")}. Reintenta con menos zonas o rubros.`);
+
     if (criteria.requireContact) {
       for (let i = prospects.length - 1; i >= 0; i--) if (!hasContact(prospects[i])) prospects.splice(i, 1); // el respaldo de texto no puede filtrar en la consulta
     }
@@ -222,6 +277,6 @@ export class OpenStreetMapConnector implements Connector {
     // Los más completos primero: así maxResults se queda con los más útiles para contactar.
     const score = (p: RawProspect) => (p.phone ? 4 : 0) + (p.email ? 3 : 0) + (p.website ? 2 : 0) + (p.address ? 1 : 0);
     prospects.sort((a, b) => score(b) - score(a));
-    return { prospects: prospects.slice(0, criteria.maxResults), errors, estimatedCostUsd: 0 };
+    return { prospects: prospects.slice(0, criteria.maxResults), errors, notes, estimatedCostUsd: 0 };
   }
 }

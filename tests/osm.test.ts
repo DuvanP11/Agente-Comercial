@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { HARD_DEADLINE_MS, OpenStreetMapConnector, filtersFor, phraseFor, safeTerm } from "@/lib/connectors/openstreetmap";
+import { HARD_DEADLINE_MS, MIN_ZONE_DEG, OpenStreetMapConnector, categoryKey, ensureMinSize, pickBestArea, filtersFor, phraseFor, safeTerm } from "@/lib/connectors/openstreetmap";
 import { searchCriteria } from "@/lib/connectors/types";
 
 const criteria = (o = {}) => searchCriteria.parse({ city: "Bogotá", categories: ["ferretería"], maxResults: 10, ...o });
@@ -122,8 +122,8 @@ describe("respaldo por tipo de negocio", () => {
     }) as unknown as typeof fetch;
     const r = await new OpenStreetMapConnector(f, ["u"], noSleep).search(criteria({ categories: ["cosmética"] }));
     expect(r.prospects.map((p) => p.name)).toEqual(["Glam House"]);
-    expect(urls.some((u) => u.includes("q=cosmetics shop in Bogotá"))).toBe(true);
-    expect(urls.some((u) => u.includes("q=cosmética,"))).toBe(false); // ya hubo resultados: no hace falta el texto
+    expect(urls.some((u) => u.includes("q=cosmetics shop&") && u.includes("bounded=1") && u.includes("viewbox="))).toBe(true); // por tipo, restringido al recuadro de la zona
+    expect(urls.some((u) => u.includes("q=cosmética&"))).toBe(false); // ya hubo resultados: no hace falta el texto
   });
   it("si por tipo no hay nada, prueba por texto; las categorías sin mapear van directo al texto", async () => {
     const qs: string[] = [];
@@ -135,7 +135,8 @@ describe("respaldo por tipo de negocio", () => {
     }) as unknown as typeof fetch;
     await new OpenStreetMapConnector(f, ["u"], noSleep).search(criteria({ categories: ["cosmética", "astillero"] }));
     expect(qs).toHaveLength(3); // cosmética: tipo + texto; astillero: solo texto
-    expect(qs[0]).toMatch(/q=cosmetics shop in/); expect(qs[1]).toMatch(/q=cosmética,/); expect(qs[2]).toMatch(/q=astillero,/);
+    expect(qs[0]).toMatch(/q=cosmetics shop&/); expect(qs[1]).toMatch(/q=cosmética&/); expect(qs[2]).toMatch(/q=astillero&/);
+    for (const q of qs) expect(q).toMatch(/viewbox=.*&bounded=1/); // siempre dentro del recuadro de la zona
   });
   it("phraseFor", () => {
     expect(phraseFor("Ferretería")).toBe("hardware store");
@@ -191,7 +192,7 @@ describe("tope de tiempo: el servidor corta todo lo que pase de 60 s", () => {
     const conn = new OpenStreetMapConnector(c.f, ["u"], async () => {}, c.now);
     const r = await conn.search(criteria({ zones: ["Suba", "Usaquén", "Chapinero"], categories: ["ferretería", "droguería", "ropa"], maxResults: 60 }));
     expect(c.now()).toBeLessThan(HARD_DEADLINE_MS + 3 * 20_000 + 1); // nunca se inicia nada nuevo pasado el límite (a lo sumo termina la que ya estaba en curso)
-    expect(r.errors.join(" ")).toMatch(/Se omitió .* por falta de tiempo/);
+    expect(r.errors.join(" ")).toMatch(/Se omiti(ó|eron) .*por falta de tiempo/);
     expect(c.calls.length).toBeLessThan(3 * 3 * 3); // no se hicieron todas las llamadas posibles
   });
   it("sin retrasos, hace todo el trabajo y no omite nada", async () => {
@@ -206,5 +207,90 @@ describe("tope de tiempo: el servidor corta todo lo que pase de 60 s", () => {
   });
   it("el límite duro es menor que el máximo de la página (60 s) con margen para guardar", () => {
     expect(HARD_DEADLINE_MS).toBeLessThanOrEqual(45_000);
+  });
+});
+
+
+describe("rubros equivalentes y avisos consolidados (caso real: 5-6 rubros casi iguales)", () => {
+  it("rubros que hacen la misma consulta tienen la misma clave", () => {
+    expect(categoryKey("ferretería")).toBe(categoryKey("artículos de ferretería"));
+    expect(categoryKey("ferretería")).toBe(categoryKey("Ferretería de bricolaje"));
+    expect(categoryKey("ferretería")).not.toBe(categoryKey("tienda de repuestos")); // otro tipo de negocio
+    expect(categoryKey("materiales de construcción")).not.toBe(categoryKey("suministros de construcción")); // por nombre: solo iguales si son iguales
+    expect(categoryKey("Astillero")).toBe(categoryKey("astillero"));
+  });
+  it("se busca UNA vez y se avisa de lo unificado", async () => {
+    const m = mock(() => json({ elements: [el(1, { name: "A", phone: "3001112222" })] }));
+    const r = await new OpenStreetMapConnector(m.f, ["u"], noSleep).search(criteria({ categories: ["ferretería", "artículos de ferretería", "ferretería de bricolaje", "ferretería de herramientas"] }));
+    expect(m.calls()).toBe(1); // antes: 4 consultas iguales
+    expect(r.notes!.join(" ")).toMatch(/unificados.*«artículos de ferretería» → «ferretería»/);
+    expect(r.prospects).toHaveLength(1);
+  });
+  it("los rubros realmente distintos siguen siendo búsquedas distintas", async () => {
+    const m = mock(() => json({ elements: [] }));
+    await new OpenStreetMapConnector(m.f, ["u"], noSleep).search(criteria({ categories: ["ferretería", "droguería", "materiales de construcción"] }));
+    expect(m.calls()).toBe(3);
+  });
+  it("los avisos se juntan: una línea por causa, no una por rubro", async () => {
+    const row = (id: number, name: string) => ({ osm_type: "node", osm_id: id, name, category: "shop", extratags: {}, address: {} });
+    const f = (async (url: string) => {
+      const u = String(url);
+      if (u.includes("limit=40")) return json([row(Math.floor(Math.random() * 1e6), "X")]);
+      if (u.includes("nominatim")) return json([NOMINATIM_OK]);
+      return new Response("c", { status: 502 });
+    }) as unknown as typeof fetch;
+    const r = await new OpenStreetMapConnector(f, ["u"], noSleep).search(criteria({ categories: ["ferretería", "droguería", "panadería", "ropa", "papelería"] }));
+    expect(r.errors).toHaveLength(1);
+    expect(r.errors[0]).toMatch(/Overpass no respondió.*para 5 búsquedas/);
+    for (const c of ["ferretería", "droguería", "panadería", "ropa", "papelería"]) expect(r.errors[0]).toContain(c);
+  });
+  it("con un solo rubro el aviso conserva su forma de siempre", async () => {
+    const f = (async (url: string) => (String(url).includes("limit=40") ? json([]) : String(url).includes("nominatim") ? json([NOMINATIM_OK]) : new Response("c", { status: 502 }))) as unknown as typeof fetch;
+    const r = await new OpenStreetMapConnector(f, ["u"], noSleep).search(criteria());
+    expect(r.errors[0]).toMatch(/^«ferretería» en Bogotá, Colombia: Overpass no respondió/);
+  });
+});
+
+
+describe("ubicar bien la zona (caso real: «Paloquemao» se resolvía como una estación de bus de 100 m)", () => {
+  const row = (cat: string, s: number, n: number, w: number, e: number) => ({ category: cat, boundingbox: [String(s), String(n), String(w), String(e)] });
+  const paloquemao = [row("amenity", 4.6163297, 4.6172463, -74.0900581, -74.0892961), row("landuse", 4.612, 4.620, -74.094, -74.086)];
+
+  it("entre varios candidatos elige el ÁREA más grande de tipo zona, no la estación", () => {
+    const [s, w, n, e] = pickBestArea(paloquemao)!;
+    expect(n - s).toBeGreaterThan(0.007); // el complejo (~0,9 km), no los ~100 m de la estación
+    expect(e - w).toBeGreaterThan(0.007);
+  });
+  it("prefiere límites administrativos y barrios a puntos de interés", () => {
+    const b = pickBestArea([row("amenity", 4.6, 4.9, -74.3, -73.9), row("place", 4.62, 4.64, -74.07, -74.05)])!; // el amenity es enorme pero NO es una zona
+    expect(b[0]).toBeCloseTo(4.62, 3);
+  });
+  it("si ningún candidato es una zona, usa el primero", () => {
+    const b = pickBestArea([row("highway", 4.60, 4.61, -74.10, -74.09), row("shop", 4.70, 4.71, -74.00, -73.99)])!;
+    expect(b[0]).toBeLessThan(4.62);
+  });
+  it("una zona minúscula se amplía, centrada, al tamaño mínimo", () => {
+    const [s, w, n, e] = ensureMinSize([4.6163, -74.0900, 4.6172, -74.0893]);
+    expect(n - s).toBeGreaterThanOrEqual(MIN_ZONE_DEG - 1e-6); expect(e - w).toBeGreaterThanOrEqual(MIN_ZONE_DEG - 1e-6);
+    expect((s + n) / 2).toBeCloseTo((4.6163 + 4.6172) / 2, 4); // sigue centrada donde estaba
+  });
+  it("una zona ya grande no se toca", () => {
+    expect(ensureMinSize([4.46, -74.22, 4.83, -74.01])).toEqual([4.46, -74.22, 4.83, -74.01]);
+  });
+  it("sin candidatos o con datos rotos devuelve null", () => {
+    expect(pickBestArea([])).toBeNull();
+    expect(pickBestArea([{ boundingbox: ["x", "y", "z", "w"] }, { category: "place" }])).toBeNull();
+  });
+  it("el recuadro que usa Overpass ya viene ampliado", async () => {
+    const bodies: string[] = [];
+    const f = (async (url: string, init?: RequestInit) => {
+      const u = String(url);
+      if (u.includes("nominatim") && !u.includes("limit=40")) return json(paloquemao);
+      if (u.includes("nominatim")) return json([]);
+      bodies.push(decodeURIComponent(String(init?.body).replace(/\+/g, " "))); return json({ elements: [] });
+    }) as unknown as typeof fetch;
+    await new OpenStreetMapConnector(f, ["u"], noSleep).search(criteria({ zones: ["Paloquemao"] }));
+    const m = bodies[0].match(/\((-?[\d.]+),(-?[\d.]+),(-?[\d.]+),(-?[\d.]+)\)/)!;
+    expect(Number(m[3]) - Number(m[1])).toBeGreaterThan(0.007); // la zona NO quedó de 100 m
   });
 });

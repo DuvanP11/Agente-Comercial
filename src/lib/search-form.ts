@@ -1,4 +1,4 @@
-import type { InterpretedSearch } from "./agents/searchInterpreter";
+import { isLocalidad, type InterpretedSearch } from "./agents/searchInterpreter";
 
 export interface FormFields { city: string; zones: string; categories: string; excludeTerms: string; maxResults: string }
 export type FieldSource = "ia" | "mantenido" | "vacio";
@@ -38,4 +38,15 @@ export function describeSearch(f: FormFields): string {
 export function keptFieldNames(source: Record<keyof FormFields, FieldSource>): string[] {
   const names: Record<keyof FormFields, string> = { city: "la ciudad", zones: "las zonas", categories: "los rubros", excludeTerms: "las exclusiones", maxResults: "el máximo de resultados" };
   return (Object.keys(source) as (keyof FormFields)[]).filter((k) => source[k] === "mantenido").map((k) => names[k]);
+}
+
+
+/**
+ * Pocos resultados en una zona pequeña (barrio): OpenStreetMap tiene pocos negocios mapeados ahí. Se sugiere ampliar.
+ * Devuelve null si no aplica (suficientes resultados, sin zona, o la zona ya es una localidad completa).
+ */
+export function fewResultsNote(zones: string[], count: number): string | null {
+  if (count >= 5 || zones.length === 0) return null;
+  if (zones.every((z) => isLocalidad(z))) return null;
+  return `Pocos resultados: en una zona pequeña como «${zones.filter((z) => !isLocalidad(z)).join(", ")}» OpenStreetMap tiene pocos negocios mapeados. Prueba con la localidad completa que la contiene, o quita la zona.`;
 }

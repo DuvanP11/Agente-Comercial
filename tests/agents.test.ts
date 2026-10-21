@@ -129,6 +129,21 @@ describe("localidades de Bogotá mal puestas como ciudad (caso real: «en Suba»
   });
 });
 
+describe("el modelo devuelve demasiados rubros (caso real con Groq: 6 «ferretería de…»)", () => {
+  const J = (o: object) => JSON.stringify({ city: null, zones: [], categories: [], maxResults: null, excludeTerms: [], notes: null, suggestions: [], ...o });
+  it("solo los 3 primeros se buscan; el resto pasa a sugerencias", async () => {
+    const r = await interpretSearch(db, org, "Ferreteria", fake(J({ categories: ["ferretería", "ferretería de construcción", "ferretería de bricolaje", "ferretería de herramientas", "ferretería de materiales de construcción", "ferretería de suministros"] })).p, "t");
+    expect(r.ok).toBe(true);
+    expect(r.output!.categories).toEqual(["ferretería", "ferretería de construcción", "ferretería de bricolaje"]);
+    expect(r.output!.suggestions).toEqual(expect.arrayContaining(["ferretería de herramientas", "ferretería de materiales de construcción"]));
+    expect(r.output!.suggestions.length).toBeLessThanOrEqual(5);
+  });
+  it("con 3 o menos no cambia nada", async () => {
+    const r = await interpretSearch(db, org, "ropa y calzado", fake(J({ categories: ["ropa", "calzado"] })).p, "t");
+    expect(r.output!.categories).toEqual(["ropa", "calzado"]);
+  });
+});
+
 describe("agente: interpretación más útil y sin inventos", () => {
   const J = (o: object) => JSON.stringify({ city: null, zones: [], categories: [], maxResults: null, excludeTerms: [], notes: null, suggestions: [], ...o });
   it("«Ropa» (4 letras) ya se puede interpretar", async () => {

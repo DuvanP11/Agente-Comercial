@@ -3,7 +3,7 @@ import type { Db } from "../db/client";
 import { prospects, searches } from "../db/schema";
 import type { IngestOutcome } from "./prospects";
 
-export interface SearchSnapshot { message: string; errors: string[]; items: IngestOutcome[] }
+export interface SearchSnapshot { message: string; errors: string[]; notes?: string[]; items: IngestOutcome[] }
 
 export const SEARCH_ID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 

@@ -14,7 +14,7 @@ interface Source { id: string; label: string; ready: boolean; howTo?: string }
 export interface Restored {
   searchId: string; connector: string; brief: string;
   criteria: { city: string; zones: string[]; categories: string[]; maxResults: number; excludeTerms: string[]; requireContact?: boolean };
-  snapshot: { message: string; errors: string[]; items: IngestOutcome[] } | null;
+  snapshot: { message: string; errors: string[]; notes?: string[]; items: IngestOutcome[] } | null;
 }
 
 // Si el servidor corta la petición (límite de tiempo, conexión), se muestra un mensaje en la pantalla en vez de romperla.
@@ -22,7 +22,7 @@ const guardSearch = guardAction(runSearch, (message): SearchState => ({ status: 
 
 export function SearchForm({ sources, restored, aiReady = false }: { sources: Source[]; restored?: Restored; aiReady?: boolean }) {
   const initial: SearchState = restored?.snapshot
-    ? { status: "ok", message: restored.snapshot.message, errors: restored.snapshot.errors, outcomes: restored.snapshot.items, searchId: restored.searchId }
+    ? { status: "ok", message: restored.snapshot.message, errors: restored.snapshot.errors, notes: restored.snapshot.notes, outcomes: restored.snapshot.items, searchId: restored.searchId }
     : { status: "idle" };
   const [s, action, pending] = useActionState<SearchState, FormData>(guardSearch, initial);
   const [sel, setSel] = useState(sources.find((x) => x.id === restored?.connector)?.id ?? sources.find((x) => x.ready)?.id ?? sources[0].id);
@@ -114,6 +114,7 @@ export function SearchForm({ sources, restored, aiReady = false }: { sources: So
       {s.status === "ok" && (
         <div className="card space-y-3">
           <p role="status" className="font-semibold">{s.message}</p>
+          {s.notes?.map((n) => <p key={n} className="text-sm text-muted">ℹ {n}</p>)}
           {s.errors?.map((e) => <p key={e} className="text-sm badge-warn">Fuente con error parcial: {e}</p>)}
           <div className="flex flex-wrap items-center gap-3">
             <button type="button" className="btn" disabled={!aiReady || analyzing || (s.outcomes ?? []).length === 0} onClick={analyze}>{analyzing ? "Analizando… (puede tardar)" : "Analizar resultados con IA"}</button>

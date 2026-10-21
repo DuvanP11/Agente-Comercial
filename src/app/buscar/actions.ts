@@ -2,6 +2,7 @@
 import { eq } from "drizzle-orm";
 import { getConnectors } from "@/lib/connectors/registry";
 import { hasContact, searchCriteria } from "@/lib/connectors/types";
+import { fewResultsNote } from "@/lib/search-form";
 import { ensureDefaultOrg, getDb } from "@/lib/db/client";
 import { searches } from "@/lib/db/schema";
 import { ingestProspects, type IngestOutcome } from "@/lib/services/prospects";
@@ -12,7 +13,7 @@ import type { InterpretedSearch } from "@/lib/agents/searchInterpreter";
 
 export interface SearchState {
   status: "idle" | "ok" | "error";
-  message?: string; errors?: string[]; outcomes?: IngestOutcome[]; searchId?: string;
+  message?: string; errors?: string[]; notes?: string[]; outcomes?: IngestOutcome[]; searchId?: string;
 }
 
 const list = (v: FormDataEntryValue | null) => String(v ?? "").split(/[,\n]/).map((s) => s.trim()).filter(Boolean);
@@ -51,8 +52,9 @@ export async function runSearch(_: SearchState, fd: FormData): Promise<SearchSta
     const already = outcomes.length - stored;
     await db.update(searches).set({ status: "completed", resultCount: stored, finishedAt: new Date(), error: result.errors.join(" | ") || null }).where(eq(searches.id, s.id));
     const message = `${result.prospects.length} resultados de ${connector.label}${parsed.data.requireContact ? " con teléfono, correo o web" : ""}: ${stored} nuevos guardados${already ? `, ${already} ya estaban guardados de antes` : ""}.${connector.id === "openstreetmap" ? " Datos © colaboradores de OpenStreetMap (ODbL)." : ""}`;
-    await saveSnapshot(db, s.id, { message, errors: result.errors, items: outcomes }); // para poder volver desde una ficha
-    return { status: "ok", outcomes, errors: result.errors, message, searchId: s.id };
+    const notes = [...(found.notes ?? []), ...[fewResultsNote(parsed.data.zones, outcomes.length)].filter((x): x is string => !!x)];
+    await saveSnapshot(db, s.id, { message, errors: result.errors, notes, items: outcomes }); // para poder volver desde una ficha
+    return { status: "ok", outcomes, errors: result.errors, notes, message, searchId: s.id };
   } catch (e) {
     // Nunca dejar que una excepción llegue como "Application error": se muestra la causa (sin cadenas de conexión).
     const msg = (e instanceof Error ? e.message : String(e)).replace(/postgres(ql)?:\/\/\S+/gi, "[conexión oculta]").slice(0, 400);

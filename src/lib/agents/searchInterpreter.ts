@@ -18,8 +18,11 @@ const output = z.object({
 export type InterpretedSearch = { city: string | null; zones: string[]; categories: string[]; maxResults: number | null; excludeTerms: string[]; notes: string | null; suggestions: string[] };
 
 /** Las 20 localidades de Bogotá. Si el modelo devuelve una como «ciudad», en realidad es una zona de Bogotá. */
+/** Rubros que el modelo puede devolver como búsqueda principal; el resto se ofrece como sugerencias (más rubros = búsquedas más lentas). */
+export const MAX_MAIN_CATEGORIES = 3;
+
 export const BOGOTA_LOCALIDADES = ["usaquen", "chapinero", "santa fe", "san cristobal", "usme", "tunjuelito", "bosa", "kennedy", "fontibon", "engativa", "suba", "barrios unidos", "teusaquillo", "los martires", "antonio narino", "puente aranda", "la candelaria", "rafael uribe uribe", "ciudad bolivar", "sumapaz"];
-const isLocalidad = (x: string) => BOGOTA_LOCALIDADES.includes(stripAccents(x).toLowerCase().trim());
+export const isLocalidad = (x: string) => BOGOTA_LOCALIDADES.includes(stripAccents(x).toLowerCase().trim());
 
 /** Palabras que indican una frase y no un rubro o un nombre: con ellas no se usa el texto como categoría. */
 const FILLER = new Set(["busco", "buscar", "quiero", "necesito", "algo", "cosas", "cosa", "negocios", "negocio", "empresas", "empresa", "clientes", "cliente", "por", "favor", "en", "de", "del", "la", "el", "los", "las", "un", "una", "y", "o", "con", "para", "que", "hola", "me", "dame", "mostrar", "muestra"]);
@@ -120,6 +123,8 @@ export const searchInterpreter: AgentDef<z.infer<typeof input>, InterpretedSearc
       categories.push(asIs);
       warnings.push(`La IA no identificó un rubro; se usó tu texto «${asIs}» tal cual (como rubro o como nombre de negocio). Si buscas un tipo de negocio, descríbelo, p. ej. «tiendas de tecnología en Suba».`);
     }
+    // Más de 3 rubros no es una búsqueda, es una lista de ideas: los primeros se buscan y el resto se ofrece como sugerencia.
+    const overflow = categories.splice(MAX_MAIN_CATEGORIES);
     // Texto corto y claro ("Ropa") pero el modelo devolvió algo sin relación ("Gafas"): se usa lo que escribiste.
     const asWritten = usableAsCategory(text);
     if (asWritten && categories.length && categories.every((c) => !relatedToText(c, text))) {
@@ -142,6 +147,6 @@ export const searchInterpreter: AgentDef<z.infer<typeof input>, InterpretedSearc
     let maxResults = o.maxResults;
     if (maxResults !== null && (!Number.isFinite(maxResults) || maxResults < 1)) maxResults = null;
     if (maxResults !== null) maxResults = Math.min(60, Math.round(maxResults));
-    return { output: { city, zones, categories, maxResults, excludeTerms: o.excludeTerms.map(safeTerm).filter(Boolean).slice(0, 10), notes: o.notes?.slice(0, 300) ?? null, suggestions: relatedSuggestions(o.suggestions, categories) }, warnings };
+    return { output: { city, zones, categories, maxResults, excludeTerms: o.excludeTerms.map(safeTerm).filter(Boolean).slice(0, 10), notes: o.notes?.slice(0, 300) ?? null, suggestions: relatedSuggestions([...overflow, ...o.suggestions], categories) }, warnings };
   },
 };
