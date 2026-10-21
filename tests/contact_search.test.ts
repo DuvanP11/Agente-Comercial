@@ -4,7 +4,7 @@ import { createPgliteDb, ensureDefaultOrg, type Db } from "@/lib/db/client";
 import { auditLog, evidence, prospects, searches } from "@/lib/db/schema";
 import { updateContact } from "@/lib/services/prospect-contact";
 import { ingestProspects, resolveReview } from "@/lib/services/prospects";
-import { loadSearch, saveSnapshot } from "@/lib/services/searches";
+import { failStaleSearches, loadSearch, saveSnapshot } from "@/lib/services/searches";
 import type { RawProspect } from "@/lib/connectors/types";
 
 let db: Db, org: string, a: string, b: string;
@@ -118,5 +118,20 @@ describe("inteligencia de mercado con base de datos", () => {
     expect(bySector(m.rows)[0]).toMatchObject({ key: "belleza", total: 1, won: 1 });
     expect((await loadMarket(d, o, { since: null, includeDemo: true })).rows).toHaveLength(2);
     expect((await loadMarket(d, o, { since: new Date(Date.now() + 86_400_000), includeDemo: true })).rows).toHaveLength(0); // periodo futuro = vacío
+  });
+});
+
+
+describe("búsquedas cortadas por el servidor", () => {
+  it("las que llevan >3 min «en curso» pasan a interrumpidas; las recientes y las terminadas no", async () => {
+    const d = await createPgliteDb(); const o = await ensureDefaultOrg(d);
+    const mk = (status: string, minutesAgo: number) => d.insert(searches).values({ orgId: o, criteria: {}, connector: "openstreetmap", status, createdAt: new Date(Date.now() - minutesAgo * 60_000) }).returning();
+    const [vieja] = await mk("running", 10), [reciente] = await mk("running", 1), [hecha] = await mk("completed", 30);
+    expect(await failStaleSearches(d, o)).toBe(1);
+    const get = async (id: string) => (await d.select().from(searches).where(eq(searches.id, id)))[0];
+    expect(await get(vieja.id)).toMatchObject({ status: "failed" }); expect((await get(vieja.id)).error).toMatch(/Interrumpida/);
+    expect((await get(reciente.id)).status).toBe("running");
+    expect((await get(hecha.id)).status).toBe("completed");
+    expect(await failStaleSearches(d, o)).toBe(0); // idempotente
   });
 });

@@ -1,7 +1,7 @@
 import Link from "next/link";
 import { getConnectors } from "@/lib/connectors/registry";
 import { ensureDefaultOrg, getDb } from "@/lib/db/client";
-import { loadSearch } from "@/lib/services/searches";
+import { failStaleSearches, loadSearch } from "@/lib/services/searches";
 import { aiReady } from "@/lib/ai/ready";
 import { SearchForm } from "./SearchForm";
 
@@ -15,9 +15,11 @@ export default async function Buscar({ searchParams }: { searchParams: Promise<{
 
   // Volver desde una ficha: se recupera la búsqueda guardada (criterios + resultados con su estado actual).
   let restored = null;
-  if (search) {
+  {
     const db = await getDb();
-    restored = await loadSearch(db, await ensureDefaultOrg(db), search);
+    const org = await ensureDefaultOrg(db);
+    await failStaleSearches(db, org).catch(() => 0); // limpieza ligera de búsquedas cortadas por el servidor
+    if (search) restored = await loadSearch(db, org, search);
   }
 
   return (

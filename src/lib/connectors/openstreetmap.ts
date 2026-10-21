@@ -5,9 +5,11 @@ const NOMINATIM = "https://nominatim.openstreetmap.org/search";
 const OVERPASS_DEFAULT = "https://overpass-api.de/api/interpreter";
 const USER_AGENT = "pibox-commercial-intelligence/0.1 (hneira@picap.co)";
 /** Cada llamada externa tiene tope; la búsqueda completa también, para que Vercel nunca mate la función en silencio. */
-const REQUEST_TIMEOUT_MS = 38_000; // medido en vivo: una consulta normal de Overpass tarda ~35 s cuando está ocupado
-const SEARCH_BUDGET_MS = 40_000; // deja ~15 s para el respaldo y para guardar dentro de maxDuration = 60
-const withTimeout = (signal?: AbortSignal) => (signal ? AbortSignal.any([signal, AbortSignal.timeout(REQUEST_TIMEOUT_MS)]) : AbortSignal.timeout(REQUEST_TIMEOUT_MS));
+// Vercel CORTA toda petición que pase de 60 s (maxDuration): un exceso no devuelve un error legible, rompe la pantalla.
+// Presupuesto total de una búsqueda ≈ 44 s de red + unos segundos para guardar, siempre por debajo de 60.
+const REQUEST_TIMEOUT_MS = 28_000; // una consulta de Overpass tarda ~35 s cuando está ocupado: pasada esa espera se usa el respaldo
+const SEARCH_BUDGET_MS = 30_000;   // tiempo máximo dedicado a Overpass en toda la búsqueda
+export const HARD_DEADLINE_MS = 44_000; // tras esto no se inicia ninguna llamada nueva
 /** Tiene alguna de estas etiquetas de contacto (con cualquier valor). */
 const CONTACT_FILTER = '[~"^(phone|contact:phone|website|contact:website|email|contact:email)$"~"."]';
 const ATTRIBUTION = "Datos © colaboradores de OpenStreetMap (licencia ODbL). Completitud variable: pocos negocios traen teléfono o web.";
@@ -70,13 +72,22 @@ export class OpenStreetMapConnector implements Connector {
     private readonly fetchImpl: typeof fetch = fetch,
     private readonly overpassUrls: string[] = (process.env.OVERPASS_URL || OVERPASS_DEFAULT).split(",").map((u) => u.trim()).filter(Boolean),
     private readonly sleep: (ms: number) => Promise<void> = (ms) => new Promise((r) => setTimeout(r, ms)),
+    private readonly now: () => number = Date.now,
   ) {}
+
+  /** Límite duro de la búsqueda en curso (instante). */
+  private hardAt = Infinity;
+  /** Tiempo de espera de una llamada: el normal, pero nunca más allá del límite duro de la búsqueda. */
+  private timeoutSignal(signal?: AbortSignal): AbortSignal {
+    const ms = Math.min(REQUEST_TIMEOUT_MS, Math.max(2_000, this.hardAt - this.now()));
+    return signal ? AbortSignal.any([signal, AbortSignal.timeout(ms)]) : AbortSignal.timeout(ms);
+  }
 
   status(): ConnectorStatus { return { state: "connected" }; } // no requiere clave
 
   private async geocode(place: string, signal?: AbortSignal): Promise<Bbox | null> {
     const url = `${NOMINATIM}?${new URLSearchParams({ q: place, format: "jsonv2", limit: "1", countrycodes: "co" })}`;
-    const res = await this.fetchImpl(url, { headers: { "User-Agent": USER_AGENT }, signal: withTimeout(signal) });
+    const res = await this.fetchImpl(url, { headers: { "User-Agent": USER_AGENT }, signal: this.timeoutSignal(signal) });
     if (!res.ok) throw new Error(`Nominatim respondió ${res.status}`);
     const rows = (await res.json()) as { boundingbox?: string[] }[];
     const b = rows[0]?.boundingbox?.map(Number);
@@ -87,12 +98,12 @@ export class OpenStreetMapConnector implements Connector {
   private async overpass(query: string, deadline: number, signal?: AbortSignal): Promise<OsmElement[]> {
     let lastError = "sin intentos";
     for (let attempt = 0; attempt < 3; attempt++) {
-      if (Date.now() > deadline) { lastError = "se agotó el tiempo máximo de la búsqueda"; break; }
+      if (this.now() > deadline) { lastError = "se agotó el tiempo máximo de la búsqueda"; break; }
       const url = this.overpassUrls[attempt % this.overpassUrls.length];
       try {
         const res = await this.fetchImpl(url, {
           method: "POST", headers: { "User-Agent": USER_AGENT, "Content-Type": "application/x-www-form-urlencoded" },
-          body: new URLSearchParams({ data: query }).toString(), signal: withTimeout(signal),
+          body: new URLSearchParams({ data: query }).toString(), signal: this.timeoutSignal(signal),
         });
         if (res.ok) {
           const data = (await res.json()) as { elements?: OsmElement[] };
@@ -104,7 +115,7 @@ export class OpenStreetMapConnector implements Connector {
         if (e instanceof Error && e.name === "TimeoutError") lastError = "el servidor tardó demasiado en responder";
         else        lastError = e instanceof Error ? e.message : String(e);
       }
-      if (attempt < 2 && Date.now() < deadline) await this.sleep(2000 * 2 ** attempt); // el servidor público se satura: espera creciente
+      if (attempt < 2 && this.now() < deadline) await this.sleep(2000 * 2 ** attempt); // el servidor público se satura: espera creciente
     }
     throw new Error(`${lastError} (el servidor público de OpenStreetMap puede estar saturado; reintenta en unos minutos)`);
   }
@@ -112,7 +123,7 @@ export class OpenStreetMapConnector implements Connector {
   /** Respaldo cuando Overpass no responde: búsqueda de texto de Nominatim (máx. 40, sin teléfono/web casi nunca). */
   private async nominatimPlaces(q: string, signal?: AbortSignal) {
     const url = `${NOMINATIM}?${new URLSearchParams({ q, format: "jsonv2", limit: "40", countrycodes: "co", extratags: "1", addressdetails: "1" })}`;
-    const res = await this.fetchImpl(url, { headers: { "User-Agent": USER_AGENT }, signal: withTimeout(signal) });
+    const res = await this.fetchImpl(url, { headers: { "User-Agent": USER_AGENT }, signal: this.timeoutSignal(signal) });
     if (!res.ok) throw new Error(`Nominatim respondió ${res.status}`);
     const rows = (await res.json()) as { osm_type?: string; osm_id?: number; name?: string; category?: string; extratags?: Record<string, string>; address?: Record<string, string> }[];
     return rows
@@ -142,11 +153,16 @@ export class OpenStreetMapConnector implements Connector {
     const prospects: RawProspect[] = [];
     const errors: string[] = [];
     const seen = new Set<string>();
-    const deadline = Date.now() + SEARCH_BUDGET_MS;
+    const start = this.now();
+    const deadline = start + SEARCH_BUDGET_MS;
+    this.hardAt = start + HARD_DEADLINE_MS;
+    const outOfTime = () => this.now() > this.hardAt;
+    const SKIP = (what: string) => `Se omitió ${what} por falta de tiempo (el servidor corta las búsquedas largas): reintenta con menos zonas o rubros.`;
     const zones = criteria.zones.length ? criteria.zones : [""];
 
     for (const zone of zones) {
       if (prospects.length >= criteria.maxResults) break;
+      if (outOfTime()) { errors.push(SKIP(`la zona «${zone || criteria.city}»`)); continue; }
       const place = [zone, criteria.city, "Colombia"].filter(Boolean).join(", ");
       let bbox: Bbox | null;
       try {
@@ -157,6 +173,7 @@ export class OpenStreetMapConnector implements Connector {
 
       for (const category of criteria.categories) {
         if (safeTerm(category).length < 3) { errors.push(`Categoría "${category}" demasiado corta o inválida.`); continue; }
+        if (outOfTime()) { errors.push(SKIP(`«${category}» en ${place}`)); continue; }
         const box = bbox.join(",");
         // Con «solo con contacto», el filtro va DENTRO de la consulta: así el cupo de resultados se llena solo con negocios que lo tienen.
         const parts = filtersFor(category).map((f) => `nwr${f}${criteria.requireContact ? CONTACT_FILTER : ""}(${box});`).join("");

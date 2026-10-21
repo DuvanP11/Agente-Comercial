@@ -1,4 +1,4 @@
-import { and, eq, inArray } from "drizzle-orm";
+import { and, eq, inArray, lt } from "drizzle-orm";
 import type { Db } from "../db/client";
 import { prospects, searches } from "../db/schema";
 import type { IngestOutcome } from "./prospects";
@@ -39,4 +39,16 @@ export async function loadSearch(db: Db, orgId: string, searchId: string) {
     criteria: s.criteria as { city: string; zones: string[]; categories: string[]; maxResults: number; excludeTerms: string[] },
     snapshot: snap ? { ...snap, items } : null,
   };
+}
+
+
+/**
+ * Si el servidor cortó una búsqueda a medias (límite de tiempo), su fila queda «running» para siempre.
+ * Las que llevan más de 3 minutos así se marcan como interrumpidas, para que el historial y las métricas no mientan.
+ */
+export async function failStaleSearches(db: Db, orgId: string, now = new Date()): Promise<number> {
+  const cutoff = new Date(now.getTime() - 3 * 60_000);
+  const rows = await db.update(searches).set({ status: "failed", finishedAt: now, error: "Interrumpida: el servidor la cortó por tardar demasiado." })
+    .where(and(eq(searches.orgId, orgId), eq(searches.status, "running"), lt(searches.createdAt, cutoff))).returning({ id: searches.id });
+  return rows.length;
 }

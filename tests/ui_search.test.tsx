@@ -4,9 +4,9 @@ import { cleanup, fireEvent, render, screen, waitFor, within } from "@testing-li
 import userEvent from "@testing-library/user-event";
 
 // La acción de servidor se sustituye por una función: lo que se prueba es la PANTALLA, no la base de datos.
-const state = vi.hoisted(() => ({ next: null as unknown }));
+const state = vi.hoisted(() => ({ next: null as unknown, fail: null as Error | null }));
 vi.mock("@/app/buscar/actions", () => ({
-  runSearch: vi.fn(async () => state.next),
+  runSearch: vi.fn(async () => { if (state.fail) throw state.fail; return state.next; }),
   interpretAction: vi.fn(async () => ({ ok: true, warnings: [], output: { city: null, zones: [], categories: ["ropa"], maxResults: null, excludeTerms: [], notes: null, suggestions: ["zapatería"] } })),
   analyzeResultsAction: vi.fn(async (ids: string[]) => ({
     readings: ids.map((id) => ({ prospectId: id, state: "analyzed", priority: 60, coverage: 0.5, unknownCount: 3, headline: "Tienda con local propio.", warnings: [] })),
@@ -36,6 +36,28 @@ const search = async (user: ReturnType<typeof userEvent.setup>, category: string
   const cat = screen.getByLabelText(/Categorías/); await user.clear(cat); await user.type(cat, category);
   await user.click(screen.getByRole("button", { name: /Buscar en OpenStreetMap/ }));
 };
+
+describe("el servidor corta la búsqueda (límite de tiempo): la pantalla NO se cae", () => {
+  it("una respuesta inesperada se muestra como mensaje y el formulario sigue usable", async () => {
+    const user = userEvent.setup();
+    render(<SearchForm sources={sources} aiReady />);
+    state.next = A; await search(user, "ferretería"); await screen.findByText("Ferretería Uno");
+    state.fail = new Error("An unexpected response was received from the server.");
+    await search(user, "boutique");
+    expect(await screen.findByText(/tardó demasiado o se cortó la conexión/)).toBeTruthy();
+    expect(screen.getByRole("button", { name: /Buscar en OpenStreetMap/ })).toBeTruthy(); // el formulario sigue ahí
+    state.fail = null; state.next = B; await search(user, "boutique");
+    expect(await screen.findByText("Boutique Uno")).toBeTruthy(); // y se puede volver a buscar
+  });
+  it("una pestaña de una versión anterior pide recargar", async () => {
+    const user = userEvent.setup();
+    render(<SearchForm sources={sources} aiReady />);
+    state.fail = new Error('Failed to find Server Action "abc123"');
+    await search(user, "ferretería");
+    expect(await screen.findByText(/Recarga la página/)).toBeTruthy();
+    state.fail = null;
+  });
+});
 
 describe("pantalla Buscar clientes: buscar varias veces seguidas (caso real: «la página se cae»)", () => {
   it("segunda búsqueda de OTRA categoría después de tener resultados", async () => {

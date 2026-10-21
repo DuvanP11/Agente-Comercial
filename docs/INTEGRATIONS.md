@@ -35,3 +35,7 @@ La pantalla **Integraciones** calcula el estado desde el entorno real: “Clave 
 Casilla en Buscar clientes. En OpenStreetMap el filtro va **dentro de la consulta** de Overpass (`[~"^(phone|contact:phone|website|contact:website|email|contact:email)$"~"."]`), de modo que el cupo de resultados se llena solo con negocios que tienen contacto; en el respaldo de texto y en Google Places se filtra después. Además, una barrera común impide guardar en la base cualquier resultado sin contacto cuando la casilla está activa. Probado en vivo: ferreterías de Chapinero → 20 resultados sin filtro (4 con contacto) vs 4 con filtro (los 4 con contacto).
 
 **Tiempos medidos:** una consulta de Overpass tarda ~35 s cuando el servidor público está ocupado; por eso la espera por consulta es de 38 s y el presupuesto total de 40 s (deja margen para el respaldo y guardar dentro del tope de 60 s de la página).
+
+
+## Límite de 60 s del servidor (2026-10-21)
+Vercel **corta toda petición que pase de 60 s** y el navegador recibe una respuesta inesperada («Application error: a client-side exception»). El conector de OpenStreetMap ahora respeta un presupuesto: Overpass hasta 30 s en total, ninguna llamada nueva después de 44 s (lo omitido se avisa en pantalla) y cada espera está acotada por ese límite. Medido en vivo: 3 zonas × 2 rubros = 34 s. Además, la pantalla captura el fallo de la petición y muestra un mensaje en vez de romperse, y las búsquedas que el servidor cortó a medias se marcan como «Interrumpida» pasados 3 minutos.

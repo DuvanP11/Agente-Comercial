@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { OpenStreetMapConnector, filtersFor, phraseFor, safeTerm } from "@/lib/connectors/openstreetmap";
+import { HARD_DEADLINE_MS, OpenStreetMapConnector, filtersFor, phraseFor, safeTerm } from "@/lib/connectors/openstreetmap";
 import { searchCriteria } from "@/lib/connectors/types";
 
 const criteria = (o = {}) => searchCriteria.parse({ city: "Bogotá", categories: ["ferretería"], maxResults: 10, ...o });
@@ -169,5 +169,42 @@ describe("seguridad de la consulta", () => {
     const m = mock(() => json({ elements: [] }));
     await new OpenStreetMapConnector(m.f, ["u"], noSleep).search(criteria({ categories: ['zzz"]; out;'] }));
     expect(decodeURIComponent(m.bodies[0])).not.toContain('"]; out;');
+  });
+});
+
+
+describe("tope de tiempo: el servidor corta todo lo que pase de 60 s", () => {
+  /** Reloj simulado: cada llamada «tarda» lo que se indique. */
+  function clocked(tookMs: number) {
+    let t = 0; const calls: string[] = [];
+    const f = (async (url: string, init?: RequestInit) => {
+      const u = String(url); calls.push(u.includes("nominatim") ? (u.includes("limit=40") ? "fallback" : "geocode") : "overpass");
+      t += tookMs;
+      if (u.includes("nominatim")) return u.includes("limit=40") ? json([{ osm_type: "node", osm_id: calls.length, name: `N${calls.length}`, category: "shop", extratags: {}, address: {} }]) : json([NOMINATIM_OK]);
+      void init; return new Response("capacity", { status: 502 });
+    }) as unknown as typeof fetch;
+    return { f, now: () => t, calls };
+  }
+
+  it("la suma de esperas de una búsqueda con muchas zonas y rubros no pasa del límite duro", async () => {
+    const c = clocked(20_000); // cada llamada de red «tarda» 20 s
+    const conn = new OpenStreetMapConnector(c.f, ["u"], async () => {}, c.now);
+    const r = await conn.search(criteria({ zones: ["Suba", "Usaquén", "Chapinero"], categories: ["ferretería", "droguería", "ropa"], maxResults: 60 }));
+    expect(c.now()).toBeLessThan(HARD_DEADLINE_MS + 3 * 20_000 + 1); // nunca se inicia nada nuevo pasado el límite (a lo sumo termina la que ya estaba en curso)
+    expect(r.errors.join(" ")).toMatch(/Se omitió .* por falta de tiempo/);
+    expect(c.calls.length).toBeLessThan(3 * 3 * 3); // no se hicieron todas las llamadas posibles
+  });
+  it("sin retrasos, hace todo el trabajo y no omite nada", async () => {
+    const c = clocked(10);
+    const r = await new OpenStreetMapConnector(c.f, ["u"], async () => {}, c.now).search(criteria({ zones: ["Suba", "Chapinero"], categories: ["ferretería", "droguería"], maxResults: 60 }));
+    expect(r.errors.join(" ")).not.toMatch(/falta de tiempo/);
+  });
+  it("lo ya encontrado se conserva aunque se omita el resto", async () => {
+    const c = clocked(25_000);
+    const r = await new OpenStreetMapConnector(c.f, ["u"], async () => {}, c.now).search(criteria({ zones: ["Suba", "Usaquén"], categories: ["ferretería", "droguería"], maxResults: 60 }));
+    expect(r.prospects.length).toBeGreaterThan(0);
+  });
+  it("el límite duro es menor que el máximo de la página (60 s) con margen para guardar", () => {
+    expect(HARD_DEADLINE_MS).toBeLessThanOrEqual(45_000);
   });
 });

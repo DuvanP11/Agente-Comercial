@@ -1,6 +1,7 @@
 "use client";
 import { useActionState, useEffect, useState, useTransition } from "react";
 import { OutcomeTable } from "@/components/OutcomeTable";
+import { guardAction, describeActionFailure } from "@/lib/safe-action";
 import { analyzeResultsAction, interpretAction, runSearch, type AnalyzeResult, type InterpretResult, type SearchState } from "./actions";
 import type { Reading } from "@/lib/services/agents";
 import { CONTACT_FILTER_LABEL, matchesContactFilter, type ContactFilter } from "@/lib/contact-filter";
@@ -16,11 +17,14 @@ export interface Restored {
   snapshot: { message: string; errors: string[]; items: IngestOutcome[] } | null;
 }
 
+// Si el servidor corta la petición (límite de tiempo, conexión), se muestra un mensaje en la pantalla en vez de romperla.
+const guardSearch = guardAction(runSearch, (message): SearchState => ({ status: "error", message }));
+
 export function SearchForm({ sources, restored, aiReady = false }: { sources: Source[]; restored?: Restored; aiReady?: boolean }) {
   const initial: SearchState = restored?.snapshot
     ? { status: "ok", message: restored.snapshot.message, errors: restored.snapshot.errors, outcomes: restored.snapshot.items, searchId: restored.searchId }
     : { status: "idle" };
-  const [s, action, pending] = useActionState<SearchState, FormData>(runSearch, initial);
+  const [s, action, pending] = useActionState<SearchState, FormData>(guardSearch, initial);
   const [sel, setSel] = useState(sources.find((x) => x.id === restored?.connector)?.id ?? sources.find((x) => x.ready)?.id ?? sources[0].id);
   // Campos controlados: React vacía los no controlados al terminar la acción y se perderían los criterios.
   const c = restored?.criteria;
@@ -39,7 +43,8 @@ export function SearchForm({ sources, restored, aiReady = false }: { sources: So
   const analyze = () => startAnalyze(async () => {
     // Analiza lo que estás viendo (respeta el filtro de contacto).
     const ids = (s.outcomes ?? []).filter((o) => o.status !== "excluded_duplicate" && matchesContactFilter(o, contactFilter)).map((o) => o.prospectId);
-    const r = await analyzeResultsAction(ids);
+    let r: AnalyzeResult;
+    try { r = await analyzeResultsAction(ids); } catch (e) { r = { readings: [], analyzed: 0, cached: 0, pending: 0, error: describeActionFailure(e) }; }
     setBatch(r);
     // Se conserva lo ya leído; solo se reemplazan filas con un resultado nuevo (no las «omitidas» de este lote).
     setReadings((cur) => { const next = { ...cur }; for (const x of r.readings) if (x.state !== "skipped" || !next[x.prospectId]) next[x.prospectId] = x; return next; });
@@ -48,7 +53,8 @@ export function SearchForm({ sources, restored, aiReady = false }: { sources: So
   const [merged, setMerged] = useState<{ next: FormFields; source: Record<keyof FormFields, FieldSource> } | null>(null);
   const [aiPending, startAi] = useTransition();
   const interpret = () => startAi(async () => {
-    const r = await interpretAction(brief);
+    let r: InterpretResult;
+    try { r = await interpretAction(brief); } catch (e) { r = { ok: false, error: describeActionFailure(e), warnings: [] }; }
     setAi(r);
     if (r.ok && r.output) {
       // La IA solo reemplaza lo que ENCONTRÓ; lo que ya habías escrito (ciudad, zonas, exclusiones) se conserva.
