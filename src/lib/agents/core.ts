@@ -47,6 +47,7 @@ export async function runAgent<I, O>(
   const t0 = Date.now();
   let attempts = 0, promptTokens = 0, completionTokens = 0;
   let answeredBy = provider.model;
+  let lastParsed: unknown;
   const chainWarnings: string[] = [];
 
   const finish = async (patch: Partial<typeof agentRuns.$inferInsert>) => {
@@ -64,7 +65,7 @@ export async function runAgent<I, O>(
       promptTokens += c.usage?.promptTokens ?? 0; completionTokens += c.usage?.completionTokens ?? 0;
       answeredBy = c.via ? `${c.via.label} · ${c.model}` : c.model;
       for (const a of c.via?.attempted ?? []) chainWarnings.push(`El proveedor «${a.label}» no estaba disponible (${REASON[a.code]}); respondió «${c.via!.label}».`);
-      try { output = parseJsonOutput(c.text, agent.outputSchema); }
+      try { output = parseJsonOutput(c.text, agent.outputSchema); lastParsed = output; }
       catch (e) { if (!(e instanceof AgentOutputError)) throw e; lastFormatError = e.message; }
     }
     if (output === undefined) return await fail(`El modelo no devolvió una respuesta utilizable tras ${attempts} intentos: ${lastFormatError}`);
@@ -74,7 +75,12 @@ export async function runAgent<I, O>(
     await finish({ status: "completed", output: checked.output as object, warnings });
     return { runId: run.id, ok: true, output: checked.output, warnings };
   } catch (e) {
-    if (e instanceof AgentRejected) return fail(`Respuesta rechazada: ${e.message}`);
+    if (e instanceof AgentRejected) {
+      // Se guarda lo que el modelo contestó para poder ver POR QUÉ se rechazó (Agentes y skills → Últimas ejecuciones).
+      const error = `Respuesta rechazada: ${e.message}`;
+      await finish({ status: "failed", error, output: (lastParsed ?? null) as object | null });
+      return { runId: run.id, ok: false, warnings: [], error };
+    }
     if (e instanceof AiError) return fail(e.message);
     return fail("Error inesperado al ejecutar el agente."); // el detalle va al log del servidor, no a la pantalla
   }

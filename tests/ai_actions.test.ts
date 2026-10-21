@@ -116,7 +116,7 @@ describe("botón: Analizar resultados con IA (Buscar)", () => {
 describe("mensaje cuando el texto no tiene un rubro", () => {
   it("se muestra como indicación, no como «Respuesta rechazada»", async () => {
     use('{"city":"Bogotá","zones":[],"categories":[],"maxResults":null,"excludeTerms":[],"notes":null}');
-    const r = await interpretAction("MLT Racores");
+    const r = await interpretAction("busco algo por favor");
     expect(r.ok).toBe(false); expect(r.error).toMatch(/^No se pudo identificar ningún rubro/); expect(r.error).not.toMatch(/Respuesta rechazada/);
   });
 });

@@ -106,6 +106,41 @@ describe("respaldo de proveedor en un agente", () => {
   });
 });
 
+describe("agente: interpretación cuando el modelo no saca rubros (caso real: «Tecnología»)", () => {
+  const empty = '{"city":null,"zones":[],"categories":[],"maxResults":null,"excludeTerms":[],"notes":null}';
+  it("un sector suelto se usa tal cual como rubro, con aviso", async () => {
+    const r = await interpretSearch(db, org, "Tecnología", fake(empty).p, "t");
+    expect(r.ok).toBe(true); expect(r.output!.categories).toEqual(["Tecnología"]);
+    expect(r.warnings.join(" ")).toMatch(/La IA no identificó un rubro; se usó tu texto «Tecnología» tal cual/);
+  });
+  it("el nombre de un negocio también (búsqueda por nombre)", async () => {
+    const r = await interpretSearch(db, org, "MLT Racores", fake(empty).p, "t");
+    expect(r.ok).toBe(true); expect(r.output!.categories).toEqual(["MLT Racores"]);
+  });
+  it("una frase vaga o larga NO se usa como rubro", async () => {
+    for (const t of ["busco algo", "algo en Bogotá por favor", "negocios", "quiero encontrar clientes buenos para mi empresa de mensajería"]) {
+      const r = await interpretSearch(db, org, t, fake(empty).p, "t");
+      expect(r.ok, t).toBe(false); expect(r.error).toMatch(/ningún rubro/);
+    }
+  });
+  it("si el modelo SÍ acierta, no se toca su respuesta", async () => {
+    const r = await interpretSearch(db, org, "Tecnología", fake('{"city":null,"zones":[],"categories":["tienda de electrónica"],"maxResults":null,"excludeTerms":[],"notes":null}').p, "t");
+    expect(r.output!.categories).toEqual(["tienda de electrónica"]);
+    expect(r.warnings.join(" ")).not.toMatch(/tal cual/);
+  });
+  it("un texto corto con caracteres de consulta se limpia antes de usarse", async () => {
+    const r = await interpretSearch(db, org, 'ferre"]; out;', fake(empty).p, "t");
+    if (r.ok) expect(r.output!.categories[0]).not.toMatch(/["\];]/);
+  });
+  it("cuando se rechaza, queda guardado lo que el modelo contestó para diagnosticar", async () => {
+    const r = await interpretSearch(db, org, "busco algo", fake('{"city":"Bogotá","zones":[],"categories":[],"maxResults":null,"excludeTerms":[],"notes":"no entendí"}').p, "t");
+    expect(r.ok).toBe(false);
+    const [run] = await db.select().from(agentRuns).where(eq(agentRuns.id, r.runId!));
+    expect(run.status).toBe("failed");
+    expect(run.output).toMatchObject({ city: "Bogotá", notes: "no entendí" });
+  });
+});
+
 describe("agente: interpretación de búsqueda", () => {
   it("normaliza, limita rubros y avisa de lo que el modelo agregó", async () => {
     const { p } = fake('{"city":"Medellín","zones":["Chapinero"],"categories":["Ferretería","ferretería","tienda de cosméticos"],"maxResults":500,"excludeTerms":[],"notes":null}');

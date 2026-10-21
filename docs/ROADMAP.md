@@ -11,7 +11,7 @@
 | 7. Integraciones | ⬜ | Gmail OAuth, WhatsApp Business, mapas embebidos. |
 | 8. Entrenamiento | ⬜ | |
 | 9. Dashboard | 🟡 parcial | Conteos reales. **Falta**: metas, funnel, costos, finanzas, reportes. |
-| 10. Pruebas y despliegue | 🟡 | 239 pruebas unitarias/integración pasan; build pasa. **Sin** pruebas E2E de interfaz; **sin** despliegue. |
+| 10. Pruebas y despliegue | 🟡 | 245 pruebas unitarias/integración pasan; build pasa. **Sin** pruebas E2E de interfaz; **sin** despliegue. |
 
 ## Pendientes que requieren al usuario
 - **P-1** Imagen corporativa de PIBOX para fijar la paleta oficial (hoy provisional).

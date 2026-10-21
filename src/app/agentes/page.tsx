@@ -59,7 +59,8 @@ export default async function Agentes() {
                 <td>{AGENT_LABEL[r.agent] ?? r.agent}</td>
                 <td><span className={`badge ${r.status === "completed" ? "badge-ok" : r.status === "failed" ? "badge-bad" : ""}`}>{r.status === "completed" ? "Completada" : r.status === "failed" ? "Falló" : "En curso"}</span></td>
                 <td className="text-sm">{r.model}</td><td>{r.attempts}</td><td className="text-sm">{r.durationMs === null ? "—" : `${(r.durationMs / 1000).toFixed(1)} s`}</td>
-                <td className="text-sm">{r.error ?? (Array.isArray(r.warnings) && r.warnings.length ? `${r.warnings.length} aviso(s)` : "—")}</td></tr>))}</tbody></table>)}
+                <td className="text-sm">{r.error ?? (Array.isArray(r.warnings) && r.warnings.length ? `${r.warnings.length} aviso(s)` : "—")}
+                  {r.status === "failed" && r.output != null && <details className="mt-1"><summary className="cursor-pointer underline">Ver lo que respondió el modelo</summary><pre className="mt-1 max-w-md overflow-x-auto whitespace-pre-wrap rounded border border-border p-2 text-xs">{JSON.stringify(r.output, null, 2).slice(0, 1500)}</pre></details>}</td></tr>))}</tbody></table>)}
       </section>
     </div>
   );
