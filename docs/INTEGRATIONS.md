@@ -29,3 +29,9 @@ La pantalla **Integraciones** calcula el estado desde el entorno real: “Clave 
 - Marcó «confirmado» la compatibilidad geográfica por estar en Bogotá → la IA ya no puede dejar nada «confirmado».
 - Devolvió `"value": null` para «no sé» → ahora se acepta.
 - Las respuestas varían entre ejecuciones; por eso todo es propuesta que una persona revisa.
+
+
+## Búsqueda «solo con teléfono, correo o web» (2026-10-21)
+Casilla en Buscar clientes. En OpenStreetMap el filtro va **dentro de la consulta** de Overpass (`[~"^(phone|contact:phone|website|contact:website|email|contact:email)$"~"."]`), de modo que el cupo de resultados se llena solo con negocios que tienen contacto; en el respaldo de texto y en Google Places se filtra después. Además, una barrera común impide guardar en la base cualquier resultado sin contacto cuando la casilla está activa. Probado en vivo: ferreterías de Chapinero → 20 resultados sin filtro (4 con contacto) vs 4 con filtro (los 4 con contacto).
+
+**Tiempos medidos:** una consulta de Overpass tarda ~35 s cuando el servidor público está ocupado; por eso la espera por consulta es de 38 s y el presupuesto total de 40 s (deja margen para el respaldo y guardar dentro del tope de 60 s de la página).

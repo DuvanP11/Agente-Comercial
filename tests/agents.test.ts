@@ -317,6 +317,13 @@ describe("agente: calificación (solo propone)", () => {
     expect(withUnknown.priority).toBe(100);
     expect(withLow.priority).toBeLessThan(100);
   });
+  it("descarta notas y resumen escritos en inglés y lo avisa", async () => {
+    const { p } = fake(JSON.stringify({ assessments: [{ criterion: "logistics_need", kind: "inferred", value: 0.6, evidenceIds: [], note: "Prospect shows potential fit, but lacks data on volume." }], summary: "Insufficient data to assess prospect." }));
+    const r = await proposeAssessment(db, org, pid, p, "t");
+    expect(r.ok).toBe(true);
+    expect(r.output!.summary).toBe(""); expect(r.output!.assessments.find((a) => a.criterion === "logistics_need")!.note).toBe("");
+    expect(r.warnings.join(" ")).toMatch(/en inglés/);
+  });
   it("NO escribe nada en el prospecto: solo propone", async () => {
     const [row] = await db.select().from(prospects).where(eq(prospects.id, pid));
     expect(row.scoreJson).toBeNull();

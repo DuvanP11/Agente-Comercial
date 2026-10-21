@@ -3,6 +3,7 @@ import { useActionState, useEffect, useState, useTransition } from "react";
 import { OutcomeTable } from "@/components/OutcomeTable";
 import { analyzeResultsAction, interpretAction, runSearch, type AnalyzeResult, type InterpretResult, type SearchState } from "./actions";
 import type { Reading } from "@/lib/services/agents";
+import { CONTACT_FILTER_LABEL, matchesContactFilter, type ContactFilter } from "@/lib/contact-filter";
 import { describeSearch, keptFieldNames, mergeInterpretation, type FieldSource, type FormFields } from "@/lib/search-form";
 import type { IngestOutcome } from "@/lib/services/prospects";
 
@@ -11,7 +12,7 @@ interface Source { id: string; label: string; ready: boolean; howTo?: string }
 
 export interface Restored {
   searchId: string; connector: string; brief: string;
-  criteria: { city: string; zones: string[]; categories: string[]; maxResults: number; excludeTerms: string[] };
+  criteria: { city: string; zones: string[]; categories: string[]; maxResults: number; excludeTerms: string[]; requireContact?: boolean };
   snapshot: { message: string; errors: string[]; items: IngestOutcome[] } | null;
 }
 
@@ -29,12 +30,15 @@ export function SearchForm({ sources, restored, aiReady = false }: { sources: So
   const [categories, setCategories] = useState(c?.categories.join(", ") ?? "");
   const [excludeTerms, setExcludeTerms] = useState(c?.excludeTerms.join(", ") ?? "");
   const [maxResults, setMaxResults] = useState(String(c?.maxResults ?? 20));
+  const [requireContact, setRequireContact] = useState(c?.requireContact ?? false);
+  const [contactFilter, setContactFilter] = useState<ContactFilter>("all");
 
   const [readings, setReadings] = useState<Record<string, Reading>>({});
   const [batch, setBatch] = useState<AnalyzeResult | null>(null);
   const [analyzing, startAnalyze] = useTransition();
   const analyze = () => startAnalyze(async () => {
-    const ids = (s.outcomes ?? []).filter((o) => o.status !== "excluded_duplicate").map((o) => o.prospectId);
+    // Analiza lo que estás viendo (respeta el filtro de contacto).
+    const ids = (s.outcomes ?? []).filter((o) => o.status !== "excluded_duplicate" && matchesContactFilter(o, contactFilter)).map((o) => o.prospectId);
     const r = await analyzeResultsAction(ids);
     setBatch(r);
     // Se conserva lo ya leído; solo se reemplazan filas con un resultado nuevo (no las «omitidas» de este lote).
@@ -94,6 +98,9 @@ export function SearchForm({ sources, restored, aiReady = false }: { sources: So
         <div><label className="label" htmlFor="categories">Categorías / sectores * (coma)</label><input id="categories" name="categories" autoComplete="off" required className="input" value={categories} onChange={(e) => setCategories(e.target.value)} placeholder="tienda de cosméticos, tienda de ropa" /></div>
         <div><label className="label" htmlFor="excludeTerms">Excluir si el nombre contiene</label><input id="excludeTerms" name="excludeTerms" autoComplete="off" className="input" value={excludeTerms} onChange={(e) => setExcludeTerms(e.target.value)} /></div>
         <div><label className="label" htmlFor="maxResults">Máximo de resultados (1–60)</label><input id="maxResults" name="maxResults" autoComplete="off" type="number" min={1} max={60} className="input" value={maxResults} onChange={(e) => setMaxResults(e.target.value)} /></div>
+        <div className="md:col-span-2"><label className="flex items-center gap-2 text-sm"><input type="checkbox" name="requireContact" checked={requireContact} onChange={(e) => setRequireContact(e.target.checked)} />
+          Solo negocios con teléfono, correo o web</label>
+          <p className="ml-6 text-xs text-muted">Trae únicamente los que tengan alguno de esos datos. {current.id === "openstreetmap" ? "En OpenStreetMap son pocos, así que puede devolver menos de lo pedido." : ""}</p></div>
         <div className="flex items-end"><button className="btn btn-primary" disabled={pending || !current.ready}>{pending ? "Buscando… (puede tardar hasta un minuto)" : `Buscar en ${current.label}`}</button></div>
       </form>
 
@@ -112,7 +119,15 @@ export function SearchForm({ sources, restored, aiReady = false }: { sources: So
               <p>{batch.analyzed} analizados ahora{batch.cached ? `, ${batch.cached} con análisis previo reutilizado` : ""}{batch.pending ? `, ${batch.pending} pendientes (pulsa de nuevo)` : ""}.</p>
               {batch.stopped && <p className="badge-warn">⚠ {batch.stopped}</p>}
             </div>)}
-          <OutcomeTable outcomes={s.outcomes!} searchId={s.searchId} readings={Object.keys(readings).length ? readings : undefined} />
+          <div className="flex flex-wrap items-center gap-2" role="group" aria-label="Filtrar por contacto">
+            <span className="text-sm text-muted">Mostrar:</span>
+            {(Object.keys(CONTACT_FILTER_LABEL) as ContactFilter[]).map((f) => {
+              const n = (s.outcomes ?? []).filter((o) => matchesContactFilter(o, f)).length;
+              return <button key={f} type="button" aria-pressed={contactFilter === f} className="btn !py-0.5 text-xs" style={contactFilter === f ? { background: "var(--color-primary)", color: "var(--color-on-primary)" } : undefined} onClick={() => setContactFilter(f)}>{CONTACT_FILTER_LABEL[f]} ({n})</button>;
+            })}
+          </div>
+          <OutcomeTable outcomes={(s.outcomes ?? []).filter((o) => matchesContactFilter(o, contactFilter))} searchId={s.searchId} readings={Object.keys(readings).length ? readings : undefined} />
+          {(s.outcomes ?? []).length > 0 && (s.outcomes ?? []).filter((o) => matchesContactFilter(o, contactFilter)).length === 0 && <p className="text-sm text-muted">Ningún resultado cumple ese filtro. Prueba «Todos» o busca otra zona o rubro.</p>}
         </div>
       )}
     </div>

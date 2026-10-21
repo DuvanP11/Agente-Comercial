@@ -83,6 +83,34 @@ describe("respaldo con búsqueda de texto", () => {
   });
 });
 
+describe("solo con teléfono, correo o web", () => {
+  it("el filtro va DENTRO de la consulta de Overpass cuando se pide", async () => {
+    const m = mock(() => json({ elements: [el(1, { name: "A", phone: "3001112222" })] }));
+    await new OpenStreetMapConnector(m.f, ["u"], noSleep).search(criteria({ requireContact: true }));
+    const q = decodeURIComponent(m.bodies[0].replace(/\+/g, " "));
+    expect(q).toContain('[~"^(phone|contact:phone|website|contact:website|email|contact:email)$"~"."]');
+    expect(q).toMatch(/\["shop"="hardware"\]\[~/); // el filtro de contacto se aplica a cada etiqueta del rubro
+  });
+  it("sin la opción, la consulta NO lleva el filtro", async () => {
+    const m = mock(() => json({ elements: [] }));
+    await new OpenStreetMapConnector(m.f, ["u"], noSleep).search(criteria());
+    expect(decodeURIComponent(m.bodies[0])).not.toContain("contact:phone");
+  });
+  it("además filtra los resultados sin contacto (respaldo de texto, que no puede filtrar en la consulta)", async () => {
+    const row = (id: number, name: string, extra = {}) => ({ osm_type: "node", osm_id: id, name, category: "shop", extratags: {}, address: {}, ...extra });
+    const f = (async (url: string) => {
+      const u = String(url);
+      if (u.includes("limit=40")) return json([row(1, "Con teléfono", { extratags: { phone: "+57 601 555 1234" } }), row(2, "Sin nada"), row(3, "Con web", { extratags: { website: "https://a.co" } }), row(4, "Con correo", { extratags: { "contact:email": "a@b.co" } })]);
+      if (u.includes("nominatim")) return json([NOMINATIM_OK]);
+      return new Response("c", { status: 502 });
+    }) as unknown as typeof fetch;
+    const r = await new OpenStreetMapConnector(f, ["u"], noSleep).search(criteria({ requireContact: true }));
+    expect(r.prospects.map((p) => p.name).sort()).toEqual(["Con correo", "Con teléfono", "Con web"]);
+    const sin = await new OpenStreetMapConnector(f, ["u"], noSleep).search(criteria());
+    expect(sin.prospects.map((p) => p.name)).toContain("Sin nada");
+  });
+});
+
 describe("respaldo por tipo de negocio", () => {
   it("busca por tipo ('cosmetics shop in …') antes que por texto", async () => {
     const urls: string[] = [];

@@ -1,7 +1,7 @@
 "use server";
 import { eq } from "drizzle-orm";
 import { getConnectors } from "@/lib/connectors/registry";
-import { searchCriteria } from "@/lib/connectors/types";
+import { hasContact, searchCriteria } from "@/lib/connectors/types";
 import { ensureDefaultOrg, getDb } from "@/lib/db/client";
 import { searches } from "@/lib/db/schema";
 import { ingestProspects, type IngestOutcome } from "@/lib/services/prospects";
@@ -24,6 +24,7 @@ export async function runSearch(_: SearchState, fd: FormData): Promise<SearchSta
     categories: list(fd.get("categories")),
     maxResults: Number(fd.get("maxResults") ?? 20),
     excludeTerms: list(fd.get("excludeTerms")),
+    requireContact: fd.get("requireContact") === "on",
   });
   if (!parsed.success) return { status: "error", message: "Revisa los criterios: se requiere ciudad y al menos una categoría." };
 
@@ -42,12 +43,14 @@ export async function runSearch(_: SearchState, fd: FormData): Promise<SearchSta
       orgId: org, naturalLanguage: String(fd.get("brief") ?? "") || null, criteria: parsed.data, connector: connector.id, status: "running",
     }).returning();
     searchId = s.id;
-    const result = await connector.search(parsed.data);
+    const found = await connector.search(parsed.data);
+    // Barrera común a todas las fuentes: con «solo con contacto» nada sin contacto llega a la base.
+    const result = parsed.data.requireContact ? { ...found, prospects: found.prospects.filter(hasContact) } : found;
     const outcomes = await ingestProspects(db, org, result.prospects, s.id);
     const stored = outcomes.filter((o) => o.status !== "already_stored").length;
     const already = outcomes.length - stored;
     await db.update(searches).set({ status: "completed", resultCount: stored, finishedAt: new Date(), error: result.errors.join(" | ") || null }).where(eq(searches.id, s.id));
-    const message = `${result.prospects.length} resultados de ${connector.label}: ${stored} nuevos guardados${already ? `, ${already} ya estaban guardados de antes` : ""}.${connector.id === "openstreetmap" ? " Datos © colaboradores de OpenStreetMap (ODbL)." : ""}`;
+    const message = `${result.prospects.length} resultados de ${connector.label}${parsed.data.requireContact ? " con teléfono, correo o web" : ""}: ${stored} nuevos guardados${already ? `, ${already} ya estaban guardados de antes` : ""}.${connector.id === "openstreetmap" ? " Datos © colaboradores de OpenStreetMap (ODbL)." : ""}`;
     await saveSnapshot(db, s.id, { message, errors: result.errors, items: outcomes }); // para poder volver desde una ficha
     return { status: "ok", outcomes, errors: result.errors, message, searchId: s.id };
   } catch (e) {

@@ -5,6 +5,7 @@ import { draftingAgent } from "../agents/drafting";
 import { qualificationAgent, type QualificationProposal } from "../agents/qualification";
 import { searchInterpreter, type InterpretedSearch } from "../agents/searchInterpreter";
 import type { AiProvider } from "../ai/provider";
+import { looksEnglish } from "../ai/guards";
 import type { Db } from "../db/client";
 import { agentRuns, evidence, prospects } from "../db/schema";
 import { loadCp, saveDraft } from "./campaigns";
@@ -71,12 +72,17 @@ function headline(p: QualificationProposal): string {
   return note ?? "";
 }
 
+/** Análisis guardados antes de exigir español pueden traer texto en inglés: no se muestra. */
+export function dropEnglish(p: QualificationProposal): QualificationProposal {
+  return { summary: looksEnglish(p.summary ?? "") ? "" : p.summary, assessments: p.assessments.map((a) => (looksEnglish(a.note ?? "") ? { ...a, note: "" } : a)) };
+}
+
 /** Última propuesta de calificación ya hecha para un prospecto (para cargarla sin volver a llamar a la IA). */
 export async function latestQualification(db: Db, orgId: string, prospectId: string): Promise<{ proposal: QualificationProposal; at: Date } | null> {
   const [r] = await db.select().from(agentRuns).where(and(
     eq(agentRuns.orgId, orgId), eq(agentRuns.agent, QUALIFICATION), eq(agentRuns.entityId, prospectId), eq(agentRuns.status, "completed"),
   )).orderBy(desc(agentRuns.startedAt)).limit(1);
-  return r?.output ? { proposal: r.output as QualificationProposal, at: r.startedAt } : null;
+  return r?.output ? { proposal: dropEnglish(r.output as QualificationProposal), at: r.startedAt } : null;
 }
 
 export interface Reading {

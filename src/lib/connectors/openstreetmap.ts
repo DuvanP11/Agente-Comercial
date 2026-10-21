@@ -1,13 +1,15 @@
-import type { Connector, ConnectorResult, ConnectorStatus, RawProspect, SearchCriteria } from "./types";
+import { hasContact, type Connector, type ConnectorResult, type ConnectorStatus, type RawProspect, type SearchCriteria } from "./types";
 import { stripAccents } from "../dedup/normalize";
 
 const NOMINATIM = "https://nominatim.openstreetmap.org/search";
 const OVERPASS_DEFAULT = "https://overpass-api.de/api/interpreter";
 const USER_AGENT = "pibox-commercial-intelligence/0.1 (hneira@picap.co)";
 /** Cada llamada externa tiene tope; la búsqueda completa también, para que Vercel nunca mate la función en silencio. */
-const REQUEST_TIMEOUT_MS = 18_000;
-const SEARCH_BUDGET_MS = 20_000; // Overpass falla a menudo y el respaldo es bueno: no vale la pena esperar más; deja margen dentro de maxDuration = 60
+const REQUEST_TIMEOUT_MS = 38_000; // medido en vivo: una consulta normal de Overpass tarda ~35 s cuando está ocupado
+const SEARCH_BUDGET_MS = 40_000; // deja ~15 s para el respaldo y para guardar dentro de maxDuration = 60
 const withTimeout = (signal?: AbortSignal) => (signal ? AbortSignal.any([signal, AbortSignal.timeout(REQUEST_TIMEOUT_MS)]) : AbortSignal.timeout(REQUEST_TIMEOUT_MS));
+/** Tiene alguna de estas etiquetas de contacto (con cualquier valor). */
+const CONTACT_FILTER = '[~"^(phone|contact:phone|website|contact:website|email|contact:email)$"~"."]';
 const ATTRIBUTION = "Datos © colaboradores de OpenStreetMap (licencia ODbL). Completitud variable: pocos negocios traen teléfono o web.";
 
 /** Categoría en español → filtros de etiquetas OSM + frase en inglés que entiende Nominatim (respaldo). Lo que no esté aquí se busca por nombre. */
@@ -156,8 +158,9 @@ export class OpenStreetMapConnector implements Connector {
       for (const category of criteria.categories) {
         if (safeTerm(category).length < 3) { errors.push(`Categoría "${category}" demasiado corta o inválida.`); continue; }
         const box = bbox.join(",");
-        const parts = filtersFor(category).map((f) => `nwr${f}(${box});`).join("");
-        const query = `[out:json][timeout:20];(${parts});out center tags 400;`;
+        // Con «solo con contacto», el filtro va DENTRO de la consulta: así el cupo de resultados se llena solo con negocios que lo tienen.
+        const parts = filtersFor(category).map((f) => `nwr${f}${criteria.requireContact ? CONTACT_FILTER : ""}(${box});`).join("");
+        const query = `[out:json][timeout:35];(${parts});out center tags 400;`;
         let els: OsmElement[] = [];
         let usedFallback = false;
         try {
@@ -193,6 +196,10 @@ export class OpenStreetMapConnector implements Connector {
           }
         }
       }
+    }
+
+    if (criteria.requireContact) {
+      for (let i = prospects.length - 1; i >= 0; i--) if (!hasContact(prospects[i])) prospects.splice(i, 1); // el respaldo de texto no puede filtrar en la consulta
     }
 
     // Los más completos primero: así maxResults se queda con los más útiles para contactar.

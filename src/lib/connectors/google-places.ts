@@ -73,6 +73,7 @@ export class GooglePlacesConnector implements Connector {
           for (const p of data.places ?? []) {
             if (!p.displayName?.text || seen.has(p.id)) continue;
             if (p.businessStatus && p.businessStatus !== "OPERATIONAL") continue;
+            if (criteria.requireContact && !p.internationalPhoneNumber && !p.nationalPhoneNumber && !p.websiteUri) continue;
             if (criteria.excludeTerms.some((t) => p.displayName!.text.toLowerCase().includes(t.toLowerCase()))) continue;
             seen.add(p.id);
             prospects.push({

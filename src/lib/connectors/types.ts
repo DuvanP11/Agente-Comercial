@@ -7,6 +7,8 @@ export const searchCriteria = z.object({
   categories: z.array(z.string()).min(1),
   maxResults: z.number().int().min(1).max(60).default(20),
   excludeTerms: z.array(z.string()).default([]),
+  /** Solo negocios con teléfono, correo o web. */
+  requireContact: z.boolean().default(false),
 });
 export type SearchCriteria = z.infer<typeof searchCriteria>;
 
@@ -49,4 +51,10 @@ export interface Connector {
   capabilities: string[];
   status(): ConnectorStatus;
   search(criteria: SearchCriteria, signal?: AbortSignal): Promise<ConnectorResult>;
+}
+
+
+/** ¿El resultado trae al menos un dato de contacto (teléfono, correo o web)? */
+export function hasContact(p: { phone?: string | null; email?: string | null; website?: string | null }): boolean {
+  return !!(p.phone?.trim() || p.email?.trim() || p.website?.trim());
 }

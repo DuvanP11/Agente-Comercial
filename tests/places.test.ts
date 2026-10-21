@@ -45,4 +45,13 @@ describe("GooglePlacesConnector", () => {
     const c = new GooglePlacesConnector("k", (async () => json({ places })) as typeof fetch);
     expect((await c.search({ ...criteria, maxResults: 3 })).prospects).toHaveLength(3);
   });
+  it("con «solo con contacto» deja fuera lo que no trae teléfono ni web", async () => {
+    const c = new GooglePlacesConnector("k", (async () => json({ places: [
+      { id: "a", displayName: { text: "Con tel" }, nationalPhoneNumber: "601 555 1234", businessStatus: "OPERATIONAL" },
+      { id: "b", displayName: { text: "Con web" }, websiteUri: "https://x.co", businessStatus: "OPERATIONAL" },
+      { id: "c", displayName: { text: "Sin nada" }, businessStatus: "OPERATIONAL" },
+    ] })) as typeof fetch);
+    expect((await c.search({ ...criteria, requireContact: true })).prospects.map((p) => p.name)).toEqual(["Con tel", "Con web"]);
+    expect((await c.search(criteria)).prospects).toHaveLength(3);
+  });
 });

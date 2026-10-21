@@ -1,5 +1,5 @@
 import { z } from "zod";
-import { inventedClaims, lenientNumber, lenientString, lenientStrings, SYSTEM_RULES, untrusted } from "../ai/guards";
+import { inventedClaims, looksEnglish, lenientNumber, lenientString, lenientStrings, SYSTEM_RULES, untrusted } from "../ai/guards";
 import { safeWebUrl } from "../contact-links";
 import { CRITERION_LABELS, DEFAULT_WEIGHTS, type CriterionKey } from "../scoring/score";
 import type { AgentDef } from "./core";
@@ -81,6 +81,7 @@ export const qualificationAgent: AgentDef<QualificationInput, QualificationPropo
       if (kind === "confirmed" && ids.length === 0) { kind = "hypothesis"; warnings.push(`${CRITERION_LABELS[key]}: se marcó «confirmado» sin evidencia; pasó a «hipótesis».`); }
 
       let note = a.note.trim().slice(0, 300);
+      if (note && looksEnglish(note)) { warnings.push(`${CRITERION_LABELS[key]}: el modelo escribió la nota en inglés; se descartó.`); note = ""; }
       const bad = inventedClaims(note, source);
       if (bad.length) { warnings.push(`${CRITERION_LABELS[key]}: la nota incluía datos que no están en los registros (${bad.join(", ")}); se descartó.`); note = ""; }
 
@@ -97,6 +98,7 @@ export const qualificationAgent: AgentDef<QualificationInput, QualificationPropo
 
     const summaryBad = inventedClaims(out.summary, source);
     let summary = out.summary.trim().slice(0, 500);
+    if (summary && looksEnglish(summary)) { warnings.push("El modelo escribió el resumen en inglés; se descartó."); summary = ""; }
     if (summaryBad.length) { warnings.push(`El resumen incluía datos que no están en los registros (${summaryBad.join(", ")}); se descartó.`); summary = ""; }
     return { output: { assessments, summary }, warnings };
   },
