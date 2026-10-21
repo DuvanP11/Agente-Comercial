@@ -116,3 +116,29 @@ describe("varios teléfonos en un mismo campo (caso real de OpenStreetMap: «+57
     expect(findDuplicates(cand({ name: "A", phone: "601 5471740; 3105550000" }), [ref({ id: "1", name: "B", phone: "3201112222; 3001234567" })])).toHaveLength(0);
   });
 });
+
+
+import { mergeInterpretation } from "@/lib/search-form";
+const out = (o: Partial<{ city: string | null; zones: string[]; categories: string[]; excludeTerms: string[]; maxResults: number | null }> = {}) =>
+  ({ city: null, zones: [], categories: ["cosmética"], excludeTerms: [], maxResults: null, notes: null, ...o });
+const form = { city: "Bogotá", zones: "Chapinero", categories: "", excludeTerms: "mayorista", maxResults: "20" };
+
+describe("Interpretar con IA no borra lo que ya escribiste", () => {
+  it("el caso real: texto «Cosmética» sin zona NO borra la localidad escrita a mano", () => {
+    const { next, source } = mergeInterpretation(form, out());
+    expect(next).toMatchObject({ city: "Bogotá", zones: "Chapinero", excludeTerms: "mayorista", maxResults: "20", categories: "cosmética" });
+    expect(source).toMatchObject({ city: "mantenido", zones: "mantenido", excludeTerms: "mantenido", maxResults: "mantenido", categories: "ia" });
+  });
+  it("lo que la IA SÍ encontró reemplaza al campo", () => {
+    const { next, source } = mergeInterpretation(form, out({ city: "Medellín", zones: ["Suba", "Usaquén"], maxResults: 15, excludeTerms: ["outlet"] }));
+    expect(next).toMatchObject({ city: "Medellín", zones: "Suba, Usaquén", maxResults: "15", excludeTerms: "outlet" });
+    expect(Object.values(source).every((x) => x === "ia")).toBe(true);
+  });
+  it("campos vacíos que la IA tampoco llena quedan vacíos y se marcan así", () => {
+    const { next, source } = mergeInterpretation({ city: "", zones: "  ", categories: "", excludeTerms: "", maxResults: "" }, out());
+    expect(next.zones).toBe(""); expect(source.zones).toBe("vacio"); expect(source.city).toBe("vacio");
+  });
+  it("no modifica el objeto original", () => {
+    const cur = { ...form }; mergeInterpretation(cur, out({ zones: ["Suba"] })); expect(cur).toEqual(form);
+  });
+});

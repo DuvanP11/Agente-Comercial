@@ -3,6 +3,7 @@ import { useActionState, useEffect, useState, useTransition } from "react";
 import { OutcomeTable } from "@/components/OutcomeTable";
 import { analyzeResultsAction, interpretAction, runSearch, type AnalyzeResult, type InterpretResult, type SearchState } from "./actions";
 import type { Reading } from "@/lib/services/agents";
+import { mergeInterpretation, type FieldSource, type FormFields } from "@/lib/search-form";
 import type { IngestOutcome } from "@/lib/services/prospects";
 
 
@@ -40,20 +41,17 @@ export function SearchForm({ sources, restored, aiReady = false }: { sources: So
     setReadings((cur) => { const next = { ...cur }; for (const x of r.readings) if (x.state !== "skipped" || !next[x.prospectId]) next[x.prospectId] = x; return next; });
   });
   const [ai, setAi] = useState<InterpretResult | null>(null);
+  const [merged, setMerged] = useState<{ next: FormFields; source: Record<keyof FormFields, FieldSource> } | null>(null);
   const [aiPending, startAi] = useTransition();
   const interpret = () => startAi(async () => {
     const r = await interpretAction(brief);
-    // Si tu texto no menciona ciudad, el campo conserva la que ya tenía: el aviso debe decirlo.
-    const noCity = r.ok && !r.output?.city;
-    setAi(noCity ? { ...r, warnings: [...r.warnings.filter((w) => !w.startsWith("No se detectó la ciudad")), city.trim() ? `Tu texto no menciona ciudad: se conservó «${city.trim()}», la que ya estaba en el formulario. Cámbiala si no es esa.` : "Tu texto no menciona ciudad: complétala a mano."] } : r);
+    setAi(r);
     if (r.ok && r.output) {
-      // Solo se llenan los campos para que los revises; no se busca nada todavía.
-      if (r.output.city) setCity(r.output.city);
-      setZones(r.output.zones.join(", "));
-      setCategories(r.output.categories.join(", "));
-      setExcludeTerms(r.output.excludeTerms.join(", "));
-      if (r.output.maxResults !== null) setMaxResults(String(r.output.maxResults));
-    }
+      // La IA solo reemplaza lo que ENCONTRÓ; lo que ya habías escrito (ciudad, zonas, exclusiones) se conserva.
+      const m = mergeInterpretation({ city, zones, categories, excludeTerms, maxResults }, r.output);
+      setMerged(m);
+      setCity(m.next.city); setZones(m.next.zones); setCategories(m.next.categories); setExcludeTerms(m.next.excludeTerms); setMaxResults(m.next.maxResults);
+    } else setMerged(null);
   });
 
   // Tras una búsqueda nueva, la URL apunta a ella: así "Volver" desde una ficha y recargar la página la recuperan.
@@ -78,20 +76,20 @@ export function SearchForm({ sources, restored, aiReady = false }: { sources: So
           </div>
           {ai && !ai.ok && <p role="alert" className="mt-1 text-sm badge-bad">{ai.error}</p>}
           {ai?.ok && <div role="status" className="mt-1 text-sm"><p className="badge-ok">La IA respondió. Esto es lo que entendió de tu descripción; revísalo antes de buscar:</p>
-            <ul className="my-1 list-disc pl-5">
-              <li>Ciudad: {ai.output?.city ? <b>{ai.output.city}</b> : <span className="text-muted">no la mencionaste</span>}</li>
-              <li>Zonas: {ai.output?.zones.length ? <b>{ai.output.zones.join(", ")}</b> : <span className="text-muted">ninguna mencionada</span>}</li>
-              <li>Rubros: {ai.output?.categories.length ? <b>{ai.output.categories.join(", ")}</b> : <span className="text-muted">ninguno</span>}</li>
-              <li>Máximo de resultados: {ai.output?.maxResults != null ? <b>{ai.output.maxResults}</b> : <span className="text-muted">no indicado (se mantiene el actual)</span>}</li>
-            </ul>
+            {merged && <ul className="my-1 list-disc pl-5">
+              {([["Ciudad", "city"], ["Zonas", "zones"], ["Rubros", "categories"], ["Excluir", "excludeTerms"], ["Máximo de resultados", "maxResults"]] as const).map(([label, k]) => (
+                <li key={k}>{label}: {merged.source[k] === "ia" ? <><b>{merged.next[k]}</b> <span className="badge">de tu texto</span></>
+                  : merged.source[k] === "mantenido" ? <><b>{merged.next[k]}</b> <span className="badge badge-warn">ya estaba en el formulario</span> <span className="text-muted">(tu texto no lo menciona; no se tocó)</span></>
+                  : <span className="text-muted">vacío</span>}</li>))}
+            </ul>}
             <p className="text-xs text-muted">Mientras más detalle des (ciudad, zonas, tipos de negocio), más campos podrá llenar. Ej.: «tiendas de cosméticos y ropa en Chapinero y Usaquén, Bogotá, máximo 15».</p>
-            {ai.warnings.map((w) => <p key={w} className="badge-warn">⚠ {w}</p>)}{ai.output?.notes && <p className="text-muted">Nota del modelo: {ai.output.notes}</p>}</div>}
+            {ai.warnings.filter((w) => !w.startsWith("No se detectó la ciudad")).map((w) => <p key={w} className="badge-warn">⚠ {w}</p>)}{ai.output?.notes && <p className="text-muted">Nota del modelo: {ai.output.notes}</p>}</div>}
         </div>
-        <div><label className="label" htmlFor="city">Ciudad *</label><input id="city" name="city" required className="input" value={city} onChange={(e) => setCity(e.target.value)} /></div>
-        <div><label className="label" htmlFor="zones">Localidades o zonas (separadas por coma)</label><input id="zones" name="zones" className="input" value={zones} onChange={(e) => setZones(e.target.value)} placeholder="Chapinero, Usaquén, Suba" /></div>
-        <div><label className="label" htmlFor="categories">Categorías / sectores * (coma)</label><input id="categories" name="categories" required className="input" value={categories} onChange={(e) => setCategories(e.target.value)} placeholder="tienda de cosméticos, tienda de ropa" /></div>
-        <div><label className="label" htmlFor="excludeTerms">Excluir si el nombre contiene</label><input id="excludeTerms" name="excludeTerms" className="input" value={excludeTerms} onChange={(e) => setExcludeTerms(e.target.value)} /></div>
-        <div><label className="label" htmlFor="maxResults">Máximo de resultados (1–60)</label><input id="maxResults" name="maxResults" type="number" min={1} max={60} className="input" value={maxResults} onChange={(e) => setMaxResults(e.target.value)} /></div>
+        <div><label className="label" htmlFor="city">Ciudad *</label><input id="city" name="city" autoComplete="off" required className="input" value={city} onChange={(e) => setCity(e.target.value)} /></div>
+        <div><label className="label" htmlFor="zones">Localidades o zonas (separadas por coma)</label><input id="zones" name="zones" autoComplete="off" className="input" value={zones} onChange={(e) => setZones(e.target.value)} placeholder="Chapinero, Usaquén, Suba" /></div>
+        <div><label className="label" htmlFor="categories">Categorías / sectores * (coma)</label><input id="categories" name="categories" autoComplete="off" required className="input" value={categories} onChange={(e) => setCategories(e.target.value)} placeholder="tienda de cosméticos, tienda de ropa" /></div>
+        <div><label className="label" htmlFor="excludeTerms">Excluir si el nombre contiene</label><input id="excludeTerms" name="excludeTerms" autoComplete="off" className="input" value={excludeTerms} onChange={(e) => setExcludeTerms(e.target.value)} /></div>
+        <div><label className="label" htmlFor="maxResults">Máximo de resultados (1–60)</label><input id="maxResults" name="maxResults" autoComplete="off" type="number" min={1} max={60} className="input" value={maxResults} onChange={(e) => setMaxResults(e.target.value)} /></div>
         <div className="flex items-end"><button className="btn btn-primary" disabled={pending || !current.ready}>{pending ? "Buscando… (puede tardar hasta un minuto)" : `Buscar en ${current.label}`}</button></div>
       </form>
 
