@@ -26,7 +26,8 @@ async function init(): Promise<Db> {
     await migrate(db, { migrationsFolder: MIGRATIONS });
     return db as unknown as Db; // mismo dialecto; la API usada es idéntica
   }
-  if (process.env.NODE_ENV === "production") {
+  // Solo para probar el build de producción en un computador (e2e/): PGLITE_LOCAL_E2E=1. Nunca se define en Vercel.
+  if (process.env.NODE_ENV === "production" && process.env.PGLITE_LOCAL_E2E !== "1") {
     throw new Error("DATABASE_URL no está configurada. En producción es obligatoria.");
   }
   return createPgliteDb(path.join(process.cwd(), ".pglite"));

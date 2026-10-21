@@ -1,0 +1,27 @@
+// Chrome REAL: pestaña abierta ANTES de un despliegue, que luego pulsa «Buscar» (acciones del servidor con identificador viejo).
+import puppeteer from "puppeteer-core";
+import { existsSync } from "node:fs";
+const BASE = process.env.BASE ?? "http://localhost:3184", PASS = process.env.PASS ?? "prueba-local";
+const CHROME = process.env.CHROME ?? "/Applications/Google Chrome.app/Contents/MacOS/Google Chrome";
+const FLAG = process.env.FLAG ?? "/tmp/redeployed.flag";
+const browser = await puppeteer.launch({ executablePath: CHROME, headless: true, args: ["--no-sandbox"] });
+const page = await browser.newPage(); await page.setViewport({ width: 1400, height: 1000 });
+const errs = [];
+page.on("pageerror", (e) => errs.push("PAGEERROR: " + e.message.slice(0, 300)));
+page.on("console", (m) => { if (m.type() === "error" && !/404/.test(m.text())) errs.push("CONSOLE: " + m.text().slice(0, 300)); });
+await page.goto(`${BASE}/login`, { waitUntil: "networkidle0" });
+await page.type("#password", PASS);
+await page.evaluate(() => [...document.querySelectorAll("button")].find((b) => /Entrar/.test(b.textContent)).click());
+await page.waitForFunction(() => !location.pathname.startsWith("/login"), { timeout: 30000 });
+await page.goto(`${BASE}/buscar`, { waitUntil: "networkidle0" });
+console.log("pestaña abierta con la versión VIEJA; esperando el despliegue nuevo…");
+while (!existsSync(FLAG)) await new Promise((r) => setTimeout(r, 1000));
+await page.type("#categories", "ferretería");
+await page.evaluate(() => [...document.querySelectorAll("button")].find((b) => /Buscar en/.test(b.textContent)).click());
+await new Promise((r) => setTimeout(r, 12000));
+const txt = await page.evaluate(() => document.body.innerText);
+console.log("¿Application error?:", /Application error/.test(txt));
+console.log("texto visible:", txt.replace(/\s+/g, " ").slice(0, 200));
+errs.slice(0, 6).forEach((e) => console.log(e));
+await page.screenshot({ path: "/tmp/e2e-vieja.png" });
+await browser.close();

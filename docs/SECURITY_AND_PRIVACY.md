@@ -9,6 +9,9 @@
 
 - IA: la clave solo en variables de entorno; el estado de la integración nunca la expone; errores del proveedor se muestran sin detalles internos; no se envían teléfonos ni correos al modelo; datos de terceros viajan marcados como no confiables y la salida se valida con reglas deterministas (ver `AGENTS_AND_SKILLS.md`).
 
+- Errores de pantalla: `error.tsx` y `global-error.tsx` muestran una pantalla de recuperación con detalle técnico recortado (sin secretos) en vez de «Application error».
+- `PGLITE_LOCAL_E2E=1` (solo pruebas locales de `e2e/`): permite la base local con el build de producción. No debe definirse en Vercel; sin él, producción exige `DATABASE_URL`.
+
 ## NO implementado (obligatorio antes de usar con datos reales en producción)
 - Usuarios individuales, roles y aislamiento por organización (hoy: una contraseña compartida y una org).
 - Límite de intentos de login y de peticiones.
