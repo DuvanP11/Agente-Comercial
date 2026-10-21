@@ -46,3 +46,7 @@ Vercel **corta toda petición que pase de 60 s** y el navegador recibe una respu
 - **Respaldo de texto:** busca dentro del recuadro de la zona (`viewbox` + `bounded=1`), no con el nombre de la zona en la frase. Mismo escenario: 0 → 20 resultados.
 - **Rubros equivalentes:** los que hacen la misma consulta («ferretería», «artículos de ferretería», «ferretería de bricolaje») se buscan una sola vez y se avisa. El intérprete de IA solo devuelve hasta 3 rubros como búsqueda principal; el resto pasa a sugerencias.
 - **Avisos consolidados:** una línea por causa (no una por rubro). Si una zona pequeña da pocos resultados se sugiere ampliar a la localidad.
+
+
+## Google Places: prueba de clave y avisos (2026-10-21)
+Integraciones → «Probar clave de Google Places» (solo si hay clave): consulta de 1 resultado con `places.id` como único campo y traduce los errores de Google (API restringida, API no habilitada, facturación, clave inválida, restricción de aplicación, permiso, cuota). Buscar muestra cuántas consultas cobradas hará la búsqueda. Pendiente de confirmar con legal: términos de almacenamiento de datos de Places (ver `GUIA_GOOGLE_CLOUD.md`).

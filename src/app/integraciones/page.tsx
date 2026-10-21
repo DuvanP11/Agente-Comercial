@@ -1,6 +1,7 @@
 import { getConnectors, PENDING_CONNECTORS } from "@/lib/connectors/registry";
 import { authConfigured } from "@/lib/auth";
 import { aiStatus } from "@/lib/ai/provider";
+import { GoogleCheck } from "./GoogleCheck";
 
 export const dynamic = "force-dynamic";
 
@@ -36,6 +37,14 @@ export default function Integraciones() {
           </tbody>
         </table>
       </div>
+      {process.env.GOOGLE_PLACES_API_KEY?.trim() && (
+        <section className="card space-y-2" aria-label="Google Places">
+          <h2 className="font-semibold">Google Places</h2>
+          <GoogleCheck />
+          <p className="text-xs text-muted">Cobra por consulta, y teléfono y web son de una tarifa superior a los datos básicos: define un presupuesto y un límite diario de solicitudes en Google Cloud.</p>
+          <p className="text-xs text-muted">Los términos de Google Maps Platform limitan cómo se pueden guardar sus datos. Esta plataforma guarda los resultados como prospectos: confirma con tu área legal o el administrador de Google Cloud que ese uso está permitido para tu cuenta.</p>
+        </section>
+      )}
     </div>
   );
 }

@@ -51,3 +51,51 @@ Consola: https://console.cloud.google.com
 | 403 `PERMISSION_DENIED` / billing | Falta vincular facturación al proyecto. |
 | 400 `API key not valid` | Clave mal copiada, o aún no se propagó (espera unos minutos). |
 | 429 | Llegaste al límite diario que pusiste. |
+
+
+---
+
+# Cuenta corporativa de Google Cloud (organización)
+
+Con una cuenta de empresa, lo que puedes hacer depende de los **roles** que te dieron y de las **políticas de la organización**.
+
+## Qué permisos hacen falta
+| Para… | Se necesita (nombres aproximados; si no coinciden, pide el permiso por su función) |
+|---|---|
+| Habilitar «Places API (New)» en el proyecto | Rol de administración de *Service Usage* |
+| Crear y restringir la clave | Rol de administración de *claves de API* |
+| Ver facturación y poner presupuesto | Rol de *facturación* de la cuenta |
+
+**Si no puedes crear la clave:** pide al administrador que la cree, ya **restringida a «Places API (New)»**, y que te la entregue por un canal seguro (nunca por chat o correo abierto). Tú solo la pegas en Vercel.
+
+**Si la organización prohíbe las claves de API** (política de la organización), este método no sirve. Habría que usar una cuenta de servicio, que la plataforma aún **no** soporta.
+
+## Paso a paso
+1. Entra a `console.cloud.google.com` con tu **cuenta corporativa** y elige arriba el **proyecto que te asignaron** (no crees uno nuevo salvo que te lo indiquen).
+2. Confirma que ese proyecto tiene **facturación vinculada** (Facturación). Places la exige.
+3. **APIs y servicios → Biblioteca →** «Places API (New)» → **Habilitar** (debe decir *New*).
+4. **APIs y servicios → Credenciales → Crear credenciales → Clave de API**. Copia la clave a un gestor de contraseñas.
+5. Abre la clave y en **Restricciones de API** marca **solo «Places API (New)»**. En «Restricciones de aplicación» deja **Ninguna** (Vercel usa IPs variables). Guarda; puede tardar unos minutos.
+6. **Presupuesto y límite diario:** Facturación → Presupuestos y alertas (avisa, no frena); y en Places API (New) → Cuotas, baja el límite diario de solicitudes (esto sí frena).
+7. **Vercel → Environment Variables → Add:** `GOOGLE_PLACES_API_KEY` = la clave, **Production**, activa **Sensitive**. Luego **Redeploy**.
+8. En la plataforma: **Integraciones → «Probar clave de Google Places»**. Hace la consulta más barata posible (1 resultado, solo el id) y, si falla, dice en español qué falta.
+9. **Buscar clientes →** elige la fuente «Google Places», una búsqueda pequeña (1 rubro, 1 zona) y revisa teléfonos y webs.
+
+## Errores que explica el botón de prueba
+| Estado | Causa | Qué hacer |
+|---|---|---|
+| Clave restringida a otras APIs | La clave no incluye Places API (New) | Credenciales → clave → Restricciones de API |
+| API no habilitada | «Places API (New)» no está habilitada en ese proyecto | Biblioteca → Habilitar |
+| Sin facturación | Proyecto sin cuenta de facturación | Vincular facturación |
+| Clave inválida | Mal copiada, con comillas o de otro proyecto | Copiarla de nuevo |
+| Restricción de aplicación | La clave limita por IP o sitio web | Dejar «Ninguna» |
+| Permiso denegado | Política de la organización o rol faltante | Pedir al administrador |
+| Cuota | Se llegó al límite diario | Revisar Cuotas |
+
+## Costos
+- Se cobra **por consulta**; cada búsqueda en la plataforma hace una consulta por zona y rubro (hasta 20 resultados cada una). La pantalla de Buscar lo muestra antes de buscar.
+- **Teléfono y web son campos de una tarifa superior** a los datos básicos. El precio exacto y el nivel de cada campo se ven en la página «Place Data Fields (New)» y en «Usage and Billing» de Google, que cambian; no los asumas.
+- La prueba de la clave usa solo el campo `places.id`, la consulta más barata.
+
+## ⚠ Almacenamiento de los datos de Google
+Los *Google Maps Platform Service Specific Terms* limitan cómo se pueden guardar los datos de Places. Lo único que se pudo confirmar al escribir esto es que el `place_id` se puede guardar y que las coordenadas solo temporalmente (una versión archivada dice hasta 30 días). **No se pudo confirmar qué dicen sobre nombres, direcciones, teléfonos y webs**, y esta plataforma los guarda como prospectos. **Antes de usarla en serio, confirma con el área legal o el administrador de Google Cloud que ese uso está permitido para tu cuenta.** Si no lo está, habrá que cambiar el diseño (p. ej. guardar solo el `place_id` y consultar el resto al momento de mostrarlo, o borrar los datos de Google pasado un plazo).
