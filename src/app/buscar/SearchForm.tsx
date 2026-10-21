@@ -12,7 +12,7 @@ import type { IngestOutcome } from "@/lib/services/prospects";
 interface Source { id: string; label: string; ready: boolean; howTo?: string }
 
 export interface Restored {
-  searchId: string; connector: string; brief: string;
+  searchId: string; createdAt?: string; connector: string; brief: string;
   criteria: { city: string; zones: string[]; categories: string[]; maxResults: number; excludeTerms: string[]; requireContact?: boolean };
   snapshot: { message: string; errors: string[]; notes?: string[]; items: IngestOutcome[] } | null;
 }
@@ -114,6 +114,11 @@ export function SearchForm({ sources, restored, aiReady = false }: { sources: So
         <div className="flex items-end"><button className="btn btn-primary" disabled={pending || !current.ready}>{pending ? "Buscando… (puede tardar hasta un minuto)" : `Buscar en ${current.label}`}</button></div>
       </form>
 
+      {restored?.createdAt && s.status === "ok" && s.searchId === restored.searchId && (
+        <p role="note" className="card text-sm badge-warn">
+          Estás viendo una <b>búsqueda guardada</b> el {new Date(restored.createdAt).toLocaleString("es-CO", { timeZone: "America/Bogota", dateStyle: "medium", timeStyle: "short" })}.
+          Sus resultados y avisos son de ese momento y no cambian. Para repetirla con la versión actual, pulsa «Buscar».
+        </p>)}
       {s.status === "error" && <p role="alert" className="card badge-bad">{s.message}</p>}
       {s.status === "ok" && (
         <div className="card space-y-3">

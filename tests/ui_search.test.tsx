@@ -122,3 +122,32 @@ describe("pantalla Buscar clientes: buscar varias veces seguidas (caso real: «l
     expect((screen.getByLabelText(/Categorías/) as HTMLInputElement).value).toBe("ropa");
   });
 });
+
+
+describe("búsqueda guardada (restaurada)", () => {
+  const restored = { searchId: "id-old", createdAt: "2026-10-21T15:30:00.000Z", connector: "openstreetmap", brief: "", criteria: { city: "Bogotá", zones: ["Paloquemao"], categories: ["ferretería"], maxResults: 20, excludeTerms: [] },
+    snapshot: { message: "2 resultados de OpenStreetMap: 1 nuevos guardados.", errors: ["aviso viejo por rubro"], notes: [], items: [out("o1", "Ferretería Vieja")] } };
+
+  it("avisa que es una foto de otro momento y con qué fecha", async () => {
+    render(<SearchForm sources={sources} aiReady restored={restored as never} />);
+    expect(screen.getByText(/búsqueda guardada/)).toBeTruthy();
+    expect(screen.getByText(/no cambian/)).toBeTruthy();
+    expect(screen.getByText("Ferretería Vieja")).toBeTruthy();
+    expect(screen.getByText(/21\/10\/2026, 10:30/)).toBeTruthy(); // 15:30 UTC = 10:30 en Colombia
+  });
+  it("al buscar de nuevo el aviso desaparece y se ven los resultados nuevos", async () => {
+    const user = userEvent.setup();
+    render(<SearchForm sources={sources} aiReady restored={restored as never} />);
+    state.next = B; await search(user, "boutique");
+    expect(await screen.findByText("Boutique Uno")).toBeTruthy();
+    expect(screen.queryByText(/búsqueda guardada/)).toBeNull();
+    expect(screen.queryByText("Ferretería Vieja")).toBeNull();
+  });
+  it("una búsqueda normal (no restaurada) no muestra el aviso", async () => {
+    const user = userEvent.setup();
+    render(<SearchForm sources={sources} aiReady />);
+    state.next = A; await search(user, "ferretería");
+    await screen.findByText("Ferretería Uno");
+    expect(screen.queryByText(/búsqueda guardada/)).toBeNull();
+  });
+});

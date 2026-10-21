@@ -31,7 +31,7 @@ export default async function Buscar({ searchParams }: { searchParams: Promise<{
       {search && !restored && <p role="alert" className="card badge-warn">No se encontró esa búsqueda guardada. Puedes hacer una nueva.</p>}
       <p className="card text-sm">¿Sin clave de Google? Puedes cargar tu propia lista en <Link className="underline font-semibold" href="/importar">Importar prospectos</Link> (CSV o Excel, sin costo).</p>
       <SearchForm sources={sources} aiReady={aiReady()} restored={restored ? {
-        searchId: restored.id, connector: restored.connector, brief: restored.brief ?? "", criteria: restored.criteria, snapshot: restored.snapshot,
+        searchId: restored.id, createdAt: restored.createdAt, connector: restored.connector, brief: restored.brief ?? "", criteria: restored.criteria, snapshot: restored.snapshot,
       } : undefined} />
     </div>
   );

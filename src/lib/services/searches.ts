@@ -35,7 +35,7 @@ export async function loadSearch(db: Db, orgId: string, searchId: string) {
     });
   }
   return {
-    id: s.id, connector: s.connector, brief: s.naturalLanguage,
+    id: s.id, connector: s.connector, brief: s.naturalLanguage, createdAt: s.createdAt.toISOString(),
     criteria: s.criteria as { city: string; zones: string[]; categories: string[]; maxResults: number; excludeTerms: string[] },
     snapshot: snap ? { ...snap, items } : null,
   };
