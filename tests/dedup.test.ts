@@ -118,9 +118,9 @@ describe("varios teléfonos en un mismo campo (caso real de OpenStreetMap: «+57
 });
 
 
-import { mergeInterpretation } from "@/lib/search-form";
+import { describeSearch, keptFieldNames, mergeInterpretation } from "@/lib/search-form";
 const out = (o: Partial<{ city: string | null; zones: string[]; categories: string[]; excludeTerms: string[]; maxResults: number | null }> = {}) =>
-  ({ city: null, zones: [], categories: ["cosmética"], excludeTerms: [], maxResults: null, notes: null, ...o });
+  ({ city: null, zones: [], categories: ["cosmética"], excludeTerms: [], maxResults: null, notes: null, suggestions: [], ...o });
 const form = { city: "Bogotá", zones: "Chapinero", categories: "", excludeTerms: "mayorista", maxResults: "20" };
 
 describe("Interpretar con IA no borra lo que ya escribiste", () => {
@@ -140,5 +140,19 @@ describe("Interpretar con IA no borra lo que ya escribiste", () => {
   });
   it("no modifica el objeto original", () => {
     const cur = { ...form }; mergeInterpretation(cur, out({ zones: ["Suba"] })); expect(cur).toEqual(form);
+  });
+});
+
+
+describe("frase «Entendí»", () => {
+  it("arma una frase clara con los campos finales", () => {
+    expect(describeSearch({ city: "Bogotá", zones: "Chapinero", categories: "Ropa", excludeTerms: "", maxResults: "20" })).toBe("Buscaré «Ropa» en Chapinero, Bogotá (hasta 20 resultados).");
+    expect(describeSearch({ city: "Bogotá", zones: "Suba, Usaquén", categories: "ferretería, pinturas", excludeTerms: "", maxResults: "" })).toBe("Buscaré «ferretería» y «pinturas» en Suba, Usaquén, Bogotá.");
+    expect(describeSearch({ city: "", zones: "", categories: "Ropa", excludeTerms: "", maxResults: "" })).toBe("Buscaré «Ropa».");
+    expect(describeSearch({ city: "Bogotá", zones: "", categories: "", excludeTerms: "", maxResults: "" })).toMatch(/Falta indicar/);
+  });
+  it("nombra en llano lo que se conservó del formulario", () => {
+    const { source } = mergeInterpretation(form, out());
+    expect(keptFieldNames(source)).toEqual(["la ciudad", "las zonas", "las exclusiones", "el máximo de resultados"]);
   });
 });

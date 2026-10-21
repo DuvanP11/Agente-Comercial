@@ -40,7 +40,7 @@ describe("ejecutor de agentes", () => {
   });
   it("entrada inválida se rechaza antes de llamar al modelo", async () => {
     const { p, calls } = fake("{}");
-    const r = await interpretSearch(db, org, "hola", p, "t");
+    const r = await interpretSearch(db, org, "ab", p, "t");
     expect(r.ok).toBe(false); expect(calls).toHaveLength(0);
   });
   it("registra la ejecución completa: modelo, intentos, tokens y duración", async () => {
@@ -103,6 +103,57 @@ describe("respaldo de proveedor en un agente", () => {
     const { p } = fake('{"city":"Bogotá","zones":[],"categories":["ferretería"],"maxResults":null,"excludeTerms":[],"notes":null}');
     const r = await interpretSearch(db, org, "ferreterías en Bogotá", p, "t");
     expect(r.ok).toBe(true); expect(r.warnings.join(" ")).not.toMatch(/respondió/);
+  });
+});
+
+describe("agente: interpretación más útil y sin inventos", () => {
+  const J = (o: object) => JSON.stringify({ city: null, zones: [], categories: [], maxResults: null, excludeTerms: [], notes: null, suggestions: [], ...o });
+  it("«Ropa» (4 letras) ya se puede interpretar", async () => {
+    const r = await interpretSearch(db, org, "Ropa", fake(J({ categories: ["Ropa"], suggestions: ["Tienda de ropa infantil", "Tienda de ropa deportiva", "Boutique"] })).p, "t");
+    expect(r.ok).toBe(true); expect(r.output!.categories).toEqual(["Ropa"]);
+    expect(r.output!.suggestions.slice(0, 3)).toEqual(["Tienda de ropa infantil", "Tienda de ropa deportiva", "Boutique"]); // las del modelo, intactas
+    expect(r.output!.suggestions).toEqual(["Tienda de ropa infantil", "Tienda de ropa deportiva", "Boutique", "zapatería", "tienda de uniformes"]); // + respaldo de la misma familia
+  });
+  it("una interpretación buena de la misma familia NO se descarta (Tecnología → tienda de electrónica)", async () => {
+    const r = await interpretSearch(db, org, "Tecnología", fake(J({ categories: ["tienda de electrónica"] })).p, "t");
+    expect(r.output!.categories).toEqual(["tienda de electrónica"]);
+    expect(r.warnings.join(" ")).not.toMatch(/no se parece|interpretación del modelo/);
+  });
+  it("«Ropa» → el modelo devuelve «Gafas»: se usa lo que escribiste y se avisa", async () => {
+    const r = await interpretSearch(db, org, "Ropa", fake(J({ categories: ["Gafas"] })).p, "t");
+    expect(r.ok).toBe(true); expect(r.output!.categories).toEqual(["Ropa"]);
+    expect(r.warnings.join(" ")).toMatch(/La IA devolvió «Gafas», que no se parece a lo que escribiste; se usó tu texto «Ropa»/);
+  });
+  it("sugerencias SIN relación se descartan (caso real: droguerías → hogar, ropa infantil, muebles)", async () => {
+    const r = await interpretSearch(db, org, "droguerías y farmacias en Suba", fake(J({ city: null, zones: ["Suba"], categories: ["droguerías", "farmacias"],
+      suggestions: ["tienda de artículos para el hogar", "centro comercial", "tienda de ropa infantil", "tienda de electrodomésticos", "tienda de muebles"] })).p, "t");
+    // Lo ajeno del modelo se descartó; solo quedan rubros de la misma familia (salud) que la plataforma sabe buscar.
+    expect(r.output!.suggestions).toEqual(["óptica", "veterinaria"]);
+    for (const ajeno of ["hogar", "centro comercial", "ropa", "electrodomésticos", "muebles"]) expect(r.output!.suggestions.join(" ")).not.toContain(ajeno);
+  });
+  it("sugerencias relacionadas se conservan; repetidas y ajenas se quitan", async () => {
+    const r = await interpretSearch(db, org, "Tecnología", fake(J({ categories: ["Tecnología"], suggestions: ["Electrónica", "Celulares y accesorios", "Computadores", "Internet y telecomunicaciones", "tecnología", "Panadería"] })).p, "t");
+    expect(r.output!.suggestions).toEqual(["Electrónica", "Celulares y accesorios", "Computadores", "papelería", "librería"]); // 3 del modelo + 2 de respaldo
+    expect(r.output!.suggestions).not.toContain("Panadería"); expect(r.output!.suggestions).not.toContain("Internet y telecomunicaciones");
+  });
+  it("máximo 5 sugerencias y limpias de caracteres de consulta", async () => {
+    const many = Array.from({ length: 9 }, (_, i) => `tienda de ropa tipo ${["a", "b", "c", "d", "e", "f", "g", "h", "i"][i]}x"]; out;`);
+    const r = await interpretSearch(db, org, "Ropa", fake(J({ categories: ["Ropa"], suggestions: many })).p, "t");
+    expect(r.output!.suggestions).toHaveLength(5);
+    expect(r.output!.suggestions.every((x) => !/["\];]/.test(x))).toBe(true);
+  });
+  it("sin sugerencias del modelo → lista vacía, sin fallar", async () => {
+    const r = await interpretSearch(db, org, "Ropa", fake('{"city":null,"zones":null,"categories":["Ropa"],"maxResults":null,"excludeTerms":null,"notes":null}').p, "t");
+    expect(r.ok).toBe(true);
+    expect(r.output!.suggestions).toEqual(["zapatería", "boutique", "tienda de uniformes", "tienda de carteras"]); // respaldo de la familia moda
+  });
+  it("si el rubro no tiene familia conocida y el modelo no sugiere nada, no se inventa nada", async () => {
+    const r = await interpretSearch(db, org, "Astillero", fake(J({ categories: ["Astillero"] })).p, "t");
+    expect(r.ok).toBe(true); expect(r.output!.suggestions).toEqual([]);
+  });
+  it("el rubro sí relacionado con el texto no genera aviso", async () => {
+    const r = await interpretSearch(db, org, "tiendas de ropa en Suba, Bogotá", fake(J({ city: "Bogotá", zones: ["Suba"], categories: ["tiendas de ropa"] })).p, "t");
+    expect(r.warnings.join(" ")).not.toMatch(/interpretación del modelo/);
   });
 });
 
@@ -316,6 +367,7 @@ describe("historial", () => {
 });
 
 import { analyzeBatch, latestQualification, previewScore } from "@/lib/services/agents";
+import { relatedSuggestions, relatedToText, shareWord } from "@/lib/agents/searchInterpreter";
 
 describe("analizar varios resultados con IA (vista previa)", () => {
   let d: Db, o: string, ids: string[];
@@ -393,5 +445,26 @@ describe("analizar varios resultados con IA (vista previa)", () => {
     expect(got!.proposal.assessments.find((a) => a.criterion === "logistics_need")!.value).toBe(0.8);
     expect(previewScore(got!.proposal).priority).not.toBeNull();
     expect(await latestQualification(d, o, "00000000-0000-0000-0000-000000000000")).toBeNull();
+  });
+});
+
+
+describe("relación entre rubros", () => {
+  it("«tienda» y otras palabras genéricas no cuentan como parecido", () => {
+    expect(shareWord("tienda de ropa", "tienda de gafas")).toBe(false);
+    expect(shareWord("tienda de ropa infantil", "Ropa")).toBe(true);
+    expect(shareWord("tienda de electrónica", "tiendas de ropa")).toBe(false);
+  });
+  it("Gafas no se relaciona con Ropa, pero electrónica sí con tecnología", () => {
+    expect(relatedToText("Gafas", "Ropa")).toBe(false);
+    expect(relatedToText("tienda de electrónica", "Tecnología")).toBe(true);
+    expect(relatedToText("tienda de ropa", "Ropa")).toBe(true);
+  });
+  it("una sugerencia que contiene la palabra buscada SÍ vale (ropa → ropa infantil)", () => {
+    expect(relatedSuggestions(["tienda de ropa infantil"], ["ropa"])).toContain("tienda de ropa infantil");
+  });
+  it("el respaldo no repite lo que ya se parece a lo elegido", () => {
+    const r = relatedSuggestions([], ["tienda de cosméticos"]);
+    expect(r).not.toContain("tienda de cosméticos"); expect(r).toContain("perfumería");
   });
 });

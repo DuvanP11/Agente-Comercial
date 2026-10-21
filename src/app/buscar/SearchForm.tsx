@@ -3,7 +3,7 @@ import { useActionState, useEffect, useState, useTransition } from "react";
 import { OutcomeTable } from "@/components/OutcomeTable";
 import { analyzeResultsAction, interpretAction, runSearch, type AnalyzeResult, type InterpretResult, type SearchState } from "./actions";
 import type { Reading } from "@/lib/services/agents";
-import { mergeInterpretation, type FieldSource, type FormFields } from "@/lib/search-form";
+import { describeSearch, keptFieldNames, mergeInterpretation, type FieldSource, type FormFields } from "@/lib/search-form";
 import type { IngestOutcome } from "@/lib/services/prospects";
 
 
@@ -69,21 +69,25 @@ export function SearchForm({ sources, restored, aiReady = false }: { sources: So
             {sources.map((x) => <option key={x.id} value={x.id}>{x.label}{x.ready ? "" : " — no conectada"}</option>)}</select></div>
         <div className="md:col-span-2">
           <label className="label" htmlFor="brief">Descripción en lenguaje natural (se guarda como contexto)</label>
-          <textarea id="brief" name="brief" rows={2} className="input" value={brief} onChange={(e) => setBrief(e.target.value)} placeholder="Ej.: cosmética y moda con tienda online en Chapinero y Usaquén…" />
+          <textarea id="brief" name="brief" rows={2} className="input" value={brief} onChange={(e) => { setBrief(e.target.value); setAi(null); setMerged(null); }} placeholder="Ej.: cosmética y moda con tienda online en Chapinero y Usaquén…" />
           <div className="mt-2 flex flex-wrap items-center gap-3">
-            <button type="button" className="btn" disabled={!aiReady || aiPending || brief.trim().length < 5} onClick={interpret}>{aiPending ? "Interpretando…" : "Interpretar con IA"}</button>
+            <button type="button" className="btn" disabled={!aiReady || aiPending || brief.trim().length < 3} onClick={interpret}>{aiPending ? "Interpretando…" : "Interpretar con IA"}</button>
             <span className="text-xs text-muted">{aiReady ? "Llena los campos de abajo a partir de tu descripción. Revísalos antes de buscar." : "IA no configurada: completa los campos a mano (ver Agentes y skills)."}</span>
           </div>
           {ai && !ai.ok && <p role="alert" className="mt-1 text-sm badge-bad">{ai.error}</p>}
-          {ai?.ok && <div role="status" className="mt-1 text-sm"><p className="badge-ok">La IA respondió. Esto es lo que entendió de tu descripción; revísalo antes de buscar:</p>
-            {merged && <ul className="my-1 list-disc pl-5">
-              {([["Ciudad", "city"], ["Zonas", "zones"], ["Rubros", "categories"], ["Excluir", "excludeTerms"], ["Máximo de resultados", "maxResults"]] as const).map(([label, k]) => (
-                <li key={k}>{label}: {merged.source[k] === "ia" ? <><b>{merged.next[k]}</b> <span className="badge">de tu texto</span></>
-                  : merged.source[k] === "mantenido" ? <><b>{merged.next[k]}</b> <span className="badge badge-warn">ya estaba en el formulario</span> <span className="text-muted">(tu texto no lo menciona; no se tocó)</span></>
-                  : <span className="text-muted">vacío</span>}</li>))}
-            </ul>}
-            <p className="text-xs text-muted">Mientras más detalle des (ciudad, zonas, tipos de negocio), más campos podrá llenar. Ej.: «tiendas de cosméticos y ropa en Chapinero y Usaquén, Bogotá, máximo 15».</p>
-            {ai.warnings.filter((w) => !w.startsWith("No se detectó la ciudad")).map((w) => <p key={w} className="badge-warn">⚠ {w}</p>)}{ai.output?.notes && <p className="text-muted">Nota del modelo: {ai.output.notes}</p>}</div>}
+          {ai?.ok && merged && (
+            <div role="status" className="mt-2 space-y-2 rounded border border-border p-3 text-sm">
+              <p><b>Entendí:</b> {describeSearch(merged.next)}</p>
+              {keptFieldNames(merged.source).length > 0 && (
+                <p className="text-xs text-muted">Se mantuvieron {keptFieldNames(merged.source).join(", ")} del formulario porque tu texto no los menciona. Cámbialos abajo si hace falta.</p>)}
+              {(ai.output?.suggestions ?? []).filter((x) => !categories.toLowerCase().includes(x.toLowerCase())).length > 0 && (
+                <div><span className="text-xs text-muted">Para ampliar la búsqueda, añade rubros relacionados:</span>
+                  <div className="mt-1 flex flex-wrap gap-2">{(ai.output?.suggestions ?? []).filter((x) => !categories.toLowerCase().includes(x.toLowerCase())).map((x) => (
+                    <button key={x} type="button" className="btn !py-0.5 text-xs" onClick={() => setCategories((c) => (c.trim() ? `${c.trim()}, ${x}` : x))}>+ {x}</button>))}</div></div>)}
+              {ai.warnings.filter((w) => !w.startsWith("No se detectó la ciudad")).map((w) => <p key={w} className="badge-warn">⚠ {w}</p>)}
+              {ai.output?.notes && <p className="text-xs text-muted">Nota del modelo: {ai.output.notes}</p>}
+            </div>)}
+          {aiReady && brief.trim().length > 0 && brief.trim().length < 3 && <p className="mt-1 text-xs text-muted">Escribe al menos 3 letras para poder interpretar.</p>}
         </div>
         <div><label className="label" htmlFor="city">Ciudad *</label><input id="city" name="city" autoComplete="off" required className="input" value={city} onChange={(e) => setCity(e.target.value)} /></div>
         <div><label className="label" htmlFor="zones">Localidades o zonas (separadas por coma)</label><input id="zones" name="zones" autoComplete="off" className="input" value={zones} onChange={(e) => setZones(e.target.value)} placeholder="Chapinero, Usaquén, Suba" /></div>

@@ -21,3 +21,21 @@ export function mergeInterpretation(cur: FormFields, out: InterpretedSearch): { 
     source: { city: city.source, zones: zones.source, categories: categories.source, excludeTerms: excludeTerms.source, maxResults: max.source },
   };
 }
+
+
+/** Una frase corta y clara con lo que se va a buscar, armada con los campos finales (no con lo que dijo el modelo). */
+export function describeSearch(f: FormFields): string {
+  const cats = f.categories.split(",").map((c) => c.trim()).filter(Boolean);
+  const zones = f.zones.split(",").map((z) => z.trim()).filter(Boolean);
+  if (cats.length === 0) return "Falta indicar qué tipo de negocio buscar.";
+  const what = cats.map((c) => `«${c}»`).join(" y ");
+  const where = [zones.join(", "), f.city.trim()].filter(Boolean).join(", ");
+  const max = f.maxResults.trim() ? ` (hasta ${f.maxResults.trim()} resultados)` : "";
+  return `Buscaré ${what}${where ? ` en ${where}` : ""}${max}.`;
+}
+
+/** Nombres, en lenguaje llano, de los campos que se conservaron del formulario porque el texto no los menciona. */
+export function keptFieldNames(source: Record<keyof FormFields, FieldSource>): string[] {
+  const names: Record<keyof FormFields, string> = { city: "la ciudad", zones: "las zonas", categories: "los rubros", excludeTerms: "las exclusiones", maxResults: "el máximo de resultados" };
+  return (Object.keys(source) as (keyof FormFields)[]).filter((k) => source[k] === "mantenido").map((k) => names[k]);
+}
