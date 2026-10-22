@@ -285,3 +285,28 @@ export const brandAssets = pgTable("brand_assets", {
   iconTint: boolean("icon_tint").notNull().default(true),
   updatedAt: ts("updated_at"),
 });
+
+/** Usuarios de la plataforma. Solo el administrador los crea y gestiona; no hay registro público ni recuperación por correo. */
+export const users = pgTable("users", {
+  id: id(),
+  orgId: text("org_id").notNull().references(() => organizations.id),
+  email: text("email").notNull(),
+  emailKey: text("email_key").notNull(),
+  username: text("username").notNull(),
+  usernameKey: text("username_key").notNull(),
+  name: text("name").notNull(),
+  /** admin | user */
+  role: text("role").notNull().default("user"),
+  /** scrypt$N$sal$hash. null = el administrador de arranque, que entra con APP_PASSWORD. */
+  passwordHash: text("password_hash"),
+  mustChangePassword: boolean("must_change_password").notNull().default(false),
+  active: boolean("active").notNull().default(true),
+  /** Se sube al restablecer la contraseña o desactivar: las sesiones anteriores dejan de valer. */
+  sessionVersion: integer("session_version").notNull().default(0),
+  failedAttempts: integer("failed_attempts").notNull().default(0),
+  lockedUntil: timestamp("locked_until", { withTimezone: true }),
+  resetRequestedAt: timestamp("reset_requested_at", { withTimezone: true }),
+  lastLoginAt: timestamp("last_login_at", { withTimezone: true }),
+  createdBy: text("created_by"),
+  createdAt: ts("created_at"),
+}, (t) => [uniqueIndex("users_email_uq").on(t.emailKey), uniqueIndex("users_username_uq").on(t.usernameKey)]);

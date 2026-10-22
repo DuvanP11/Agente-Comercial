@@ -13,7 +13,7 @@ const settle = (ms = 2500) => new Promise((r) => setTimeout(r, ms));
 const step = async (name) => console.log(`  ${name} → caída=${await crashed()} url=${page.url().replace(BASE, "")}`);
 
 await page.goto(`${BASE}/login`, { waitUntil: "networkidle0" });
-await page.type("#password", PASS);
+await page.type("#identifier", process.env.ADMIN_USER ?? "admin"); await page.type("#password", PASS);
 await page.evaluate(() => [...document.querySelectorAll("button")].find((b) => /Entrar/.test(b.textContent)).click());
 await page.waitForFunction(() => !location.pathname.startsWith("/login"), { timeout: 30000 });
 await page.goto(`${BASE}/buscar`, { waitUntil: "networkidle0" });

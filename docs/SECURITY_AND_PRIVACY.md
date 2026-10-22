@@ -1,7 +1,7 @@
 # Seguridad y privacidad
 
 ## Implementado
-- Acceso por contraseña compartida con cookie HttpOnly firmada (HMAC-SHA256), comparación en tiempo constante; fail-closed en producción.
+- Usuarios individuales: solo el administrador (entra con `ADMIN_EMAIL` + `APP_PASSWORD`) crea usuarios con correos de `pibox.app`, `picap.app`, `picap.io` o `softlab.app`, los edita, desactiva y restablece sus contraseñas (temporal de un solo uso, obliga a cambiarla). Contraseñas con scrypt; bloqueo de 15 min tras 5 fallos; cookie HttpOnly firmada (HMAC-SHA256) con versión de sesión (restablecer o desactivar cierra sesiones); fail-closed en producción. No hay registro público ni recuperación por correo.
 - Validación con Zod en criterios de búsqueda y temas; consultas parametrizadas (Drizzle).
 - Subidas: solo `.csv`/`.xlsx`, máx. 5 MB y 20.000 filas; `exceljs` en lugar de `xlsx` (vulnerable).
 - Secretos solo en variables de servidor; ninguna `NEXT_PUBLIC_*`.
@@ -13,8 +13,8 @@
 - `PGLITE_LOCAL_E2E=1` (solo pruebas locales de `e2e/`): permite la base local con el build de producción. No debe definirse en Vercel; sin él, producción exige `DATABASE_URL`.
 
 ## NO implementado (obligatorio antes de usar con datos reales en producción)
-- Usuarios individuales, roles y aislamiento por organización (hoy: una contraseña compartida y una org).
-- Límite de intentos de login y de peticiones.
+- Aislamiento por organización (hoy una sola org) y roles más finos que administrador/usuario.
+- Límite de peticiones (el login sí tiene bloqueo por cuenta).
 - Cifrado de tokens de integraciones (aún no existen).
 - Procedimiento de eliminación/exportación de datos personales y registro de "no contactar".
 - Política de tratamiento de datos conforme a la **Ley 1581 de 2012**: requiere revisión legal; el texto no está redactado.

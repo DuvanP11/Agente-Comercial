@@ -10,7 +10,7 @@ const errs = [];
 page.on("pageerror", (e) => errs.push("PAGEERROR: " + e.message.slice(0, 300)));
 page.on("console", (m) => { if (m.type() === "error" && !/404/.test(m.text())) errs.push("CONSOLE: " + m.text().slice(0, 300)); });
 await page.goto(`${BASE}/login`, { waitUntil: "networkidle0" });
-await page.type("#password", PASS);
+await page.type("#identifier", process.env.ADMIN_USER ?? "admin"); await page.type("#password", PASS);
 await page.evaluate(() => [...document.querySelectorAll("button")].find((b) => /Entrar/.test(b.textContent)).click());
 await page.waitForFunction(() => !location.pathname.startsWith("/login"), { timeout: 30000 });
 await page.goto(`${BASE}/buscar`, { waitUntil: "networkidle0" });

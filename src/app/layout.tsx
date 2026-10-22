@@ -1,6 +1,9 @@
 import type { Metadata } from "next";
 import "./globals.css";
-import { Sidebar } from "@/components/Sidebar";
+import { AppShell } from "@/components/AppShell";
+import { NAV } from "@/lib/nav";
+import { getCurrentUser } from "@/lib/session";
+import { logoutAction } from "./cuenta/actions";
 import { BrandLogo } from "@/components/BrandLogo";
 import { ensureDefaultOrg, getDb } from "@/lib/db/client";
 import { getBrandInfo, type BrandInfo } from "@/lib/services/brand";
@@ -22,18 +25,17 @@ export async function generateMetadata(): Promise<Metadata> {
 }
 
 export default async function RootLayout({ children }: { children: React.ReactNode }) {
-  const [theme, b] = await Promise.all([getActiveTheme(), brand()]);
+  const [theme, b, user] = await Promise.all([getActiveTheme(), brand(), getCurrentUser()]);
   return (
     <html lang="es">
       <head><style dangerouslySetInnerHTML={{ __html: themeCss(theme) }} /></head>
       <body>
-        <div className="flex min-h-screen flex-col md:flex-row">
-          <aside className="border-b border-border bg-surface md:w-64 md:shrink-0 md:border-b-0 md:border-r">
-            <div className="px-5 pt-5"><BrandLogo version={b.version} tint={b.tint} /><div className="mt-1 text-xs text-muted">Commercial Intelligence</div></div>
-            <Sidebar />
-          </aside>
-          <main className="min-w-0 flex-1 p-4 md:p-8">{children}</main>
-        </div>
+        {user ? (
+          <AppShell items={NAV.filter((n) => !n.adminOnly || user.role === "admin")} user={{ name: user.name, email: user.email, role: user.role }} logout={logoutAction}
+            brand={<div><BrandLogo version={b.version} tint={b.tint} height={30} /><div className="mt-1 text-xs text-muted">Commercial Intelligence</div></div>}>
+            {children}
+          </AppShell>
+        ) : children}
       </body>
     </html>
   );

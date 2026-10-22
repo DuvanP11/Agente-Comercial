@@ -1,5 +1,5 @@
 import { NextResponse, type NextRequest } from "next/server";
-import { authConfigured, isValidSession, SESSION_COOKIE } from "@/lib/auth";
+import { authConfigured, readSession, SESSION_COOKIE } from "@/lib/auth";
 
 export async function middleware(req: NextRequest) {
   const { pathname } = req.nextUrl;
@@ -13,7 +13,15 @@ export async function middleware(req: NextRequest) {
     }
     return NextResponse.next();
   }
-  if (await isValidSession(req.cookies.get(SESSION_COOKIE)?.value)) return NextResponse.next();
+  const session = await readSession(req.cookies.get(SESSION_COOKIE)?.value);
+  if (session) {
+    // Quien debe cambiar su contraseña temporal solo puede ver su cuenta.
+    if (session.m && !pathname.startsWith("/cuenta") && !pathname.startsWith("/brand/")) {
+      const url = req.nextUrl.clone(); url.pathname = "/cuenta"; url.search = "?cambio=obligatorio";
+      return NextResponse.redirect(url);
+    }
+    return NextResponse.next();
+  }
   const url = req.nextUrl.clone();
   url.pathname = "/login";
   return NextResponse.redirect(url);

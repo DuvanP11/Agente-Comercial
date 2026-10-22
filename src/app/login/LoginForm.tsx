@@ -1,15 +1,17 @@
 "use client";
 import { useState } from "react";
 
-export function LoginForm({ action, error, notConfigured }: { action: (fd: FormData) => void | Promise<void>; error: boolean; notConfigured: boolean }) {
+export function LoginForm({ action, error, notConfigured, footer }: { action: (fd: FormData) => void | Promise<void>; error: string | null; notConfigured: boolean; footer?: React.ReactNode }) {
   const [show, setShow] = useState(false);
   return (
     <form action={action} style={{ background: "#fff", padding: 32, borderRadius: 12, width: 340, border: "1px solid #e2e8f0" }}>
       <h1 style={{ fontSize: 20, fontWeight: 700, marginBottom: 16 }}>PIBOX Commercial Intelligence</h1>
       {notConfigured && <p style={{ color: "#92600a", fontSize: 13, marginBottom: 12 }}>APP_PASSWORD / AUTH_SECRET no están configurados en el servidor.</p>}
+      <label htmlFor="identifier" style={{ fontSize: 13 }}>Correo o usuario</label>
+      <input id="identifier" name="identifier" type="text" required autoFocus autoComplete="username" style={{ width: "100%", padding: 8, border: "1px solid #cbd5e1", borderRadius: 8, margin: "4px 0 12px" }} />
       <label htmlFor="password" style={{ fontSize: 13 }}>Contraseña</label>
       <div style={{ position: "relative", margin: "4px 0 12px" }}>
-        <input id="password" name="password" type={show ? "text" : "password"} required autoFocus autoComplete="current-password"
+        <input id="password" name="password" type={show ? "text" : "password"} required autoComplete="current-password"
           style={{ width: "100%", padding: "8px 40px 8px 8px", border: "1px solid #cbd5e1", borderRadius: 8 }} />
         <button type="button" onClick={() => setShow((s) => !s)} aria-label={show ? "Ocultar contraseña" : "Mostrar contraseña"} aria-pressed={show}
           style={{ position: "absolute", right: 6, top: 4, border: 0, background: "transparent", cursor: "pointer", padding: 4, color: "#475569" }}>
@@ -20,8 +22,9 @@ export function LoginForm({ action, error, notConfigured }: { action: (fd: FormD
           )}
         </button>
       </div>
-      {error && <p role="alert" style={{ color: "#b42318", fontSize: 13, marginBottom: 8 }}>Contraseña incorrecta.</p>}
+      {error && <p role="alert" style={{ color: "#b42318", fontSize: 13, marginBottom: 8 }}>{error}</p>}
       <button style={{ width: "100%", padding: 10, background: "#1f4fd8", color: "#fff", border: 0, borderRadius: 8, fontWeight: 600 }}>Entrar</button>
+      {footer && <div style={{ marginTop: 12, textAlign: "center" }}>{footer}</div>}
     </form>
   );
 }

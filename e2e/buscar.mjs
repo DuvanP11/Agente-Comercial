@@ -19,7 +19,7 @@ const bodyText = () => page.evaluate(() => document.body.innerText);
 const crashed = async () => (await bodyText()).includes("Application error");
 
 await page.goto(`${BASE}/login`, { waitUntil: "networkidle0" });
-await page.type("#password", PASS);
+await page.type("#identifier", process.env.ADMIN_USER ?? "admin"); await page.type("#password", PASS);
 await (await page.$$("button")).find(async () => true); // (se pulsa «Entrar» por su texto)
 await page.evaluate(() => [...document.querySelectorAll("button")].find((b) => /Entrar/.test(b.textContent)).click());
 await page.waitForFunction(() => !location.pathname.startsWith("/login"), { timeout: 30_000 }); // la redirección de Next es interna, no una carga completa

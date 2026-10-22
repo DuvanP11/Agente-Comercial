@@ -14,7 +14,7 @@ const state = async (name) => { const t = await txt(); console.log(`  ${name} â†
 const clickBuscar = () => page.evaluate(() => [...document.querySelectorAll("button")].find((b) => /Buscar en/.test(b.textContent)).click());
 const setCat = async (c) => { await page.click("#categories", { clickCount: 3 }); await page.keyboard.press("Backspace"); await page.type("#categories", c); };
 
-await page.goto(`${BASE}/login`, { waitUntil: "networkidle0" }); await page.type("#password", PASS);
+await page.goto(`${BASE}/login`, { waitUntil: "networkidle0" }); await page.type("#identifier", process.env.ADMIN_USER ?? "admin"); await page.type("#password", PASS);
 await page.evaluate(() => [...document.querySelectorAll("button")].find((b) => /Entrar/.test(b.textContent)).click());
 await page.waitForFunction(() => !location.pathname.startsWith("/login"), { timeout: 30000 });
 await page.goto(`${BASE}/buscar`, { waitUntil: "networkidle0" });
