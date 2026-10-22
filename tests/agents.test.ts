@@ -298,7 +298,7 @@ describe("agente: calificación (solo propone)", () => {
     expect(by.geo_compatibility.kind).toBe("inferred");
     expect(by.delivery_volume.evidenceIds).toEqual([]); expect(by.delivery_volume.note).toBe(""); // cifra inventada descartada
     expect(by.contact_channel).toMatchObject({ origin: "rule", value: 1 }); // tiene teléfono → lo decide el código
-    expect(by.evidence_quality).toBeUndefined(); expect(by.inexistente).toBeUndefined();
+    expect(by.evidence_quality).toMatchObject({ origin: "rule", kind: "confirmed" }); expect(by.inexistente).toBeUndefined(); // la calidad de la evidencia la calcula el código, no el modelo
     expect(r.output!.summary).toBe(""); // "500 empleados" no está en los datos
     expect(r.warnings.length).toBeGreaterThanOrEqual(6);
   });
@@ -511,5 +511,44 @@ describe("relación entre rubros", () => {
   it("el respaldo no repite lo que ya se parece a lo elegido", () => {
     const r = relatedSuggestions([], ["tienda de cosméticos"]);
     expect(r).not.toContain("tienda de cosméticos"); expect(r).toContain("perfumería");
+  });
+});
+
+
+describe("calidad de la evidencia: la calcula el código con los datos reales", () => {
+  const reply = '{"assessments":[{"criterion":"evidence_quality","kind":"inferred","value":1,"evidenceIds":[],"note":"x"}],"summary":""}';
+  it("cuenta cuántos datos clave (nombre, dirección, teléfono, web/correo) tienen evidencia, y cita esas evidencias", async () => {
+    const d = await createPgliteDb(); const o = await ensureDefaultOrg(d);
+    const out = await ingestProspects(d, o, [raw({ name: "Hornitos", category: "panadería", phone: "3107555555", website: "https://hornitos.co", address: "Carrera 11", sourceId: "h1" })]);
+    const r = await proposeAssessment(d, o, out[0].prospectId, fake(reply).p, "t");
+    const q = r.output!.assessments.find((a) => a.criterion === "evidence_quality")!;
+    expect(q).toMatchObject({ kind: "confirmed", value: 1, origin: "rule" }); // los 4 datos tienen evidencia
+    expect(q.evidenceIds).toHaveLength(4);
+    expect(r.output!.assessments.filter((a) => a.criterion === "evidence_quality")).toHaveLength(1); // lo del modelo se ignoró
+  });
+  it("con solo nombre y dirección vale 0,5; sin evidencia no se inventa nada", async () => {
+    const d = await createPgliteDb(); const o = await ensureDefaultOrg(d);
+    const out = await ingestProspects(d, o, [raw({ name: "Panes y Sabores", address: "Calle 22D Sur", sourceId: "p1" })]);
+    const r = await proposeAssessment(d, o, out[0].prospectId, fake(reply).p, "t");
+    expect(r.output!.assessments.find((a) => a.criterion === "evidence_quality")).toMatchObject({ value: 0.5 });
+  });
+  it("«confirmado» sin evidencias no se emite nunca (no se podría guardar después)", async () => {
+    const d = await createPgliteDb(); const o = await ensureDefaultOrg(d);
+    const out = await ingestProspects(d, o, [raw({ name: "Sin evidencia", sourceId: "z1" })]);
+    await d.delete(evidence).where(eq(evidence.entityId, out[0].prospectId));
+    const r = await proposeAssessment(d, o, out[0].prospectId, fake(reply).p, "t");
+    expect(r.output!.assessments.find((a) => a.criterion === "evidence_quality")).toBeUndefined();
+  });
+  it("el caso Hornitos: con contacto y evidencia sube la cobertura, pero sigue sin prioridad y se explica por qué", async () => {
+    const d = await createPgliteDb(); const o = await ensureDefaultOrg(d);
+    const out = await ingestProspects(d, o, [raw({ name: "Hornitos", category: "panadería", phone: "3107555555", email: "s@hornitos.co", website: "https://hornitos.co", address: "Carrera 11", sourceId: "h2" })]);
+    const sinInfo = '{"assessments":[{"criterion":"icp_fit","kind":"unknown","value":0,"evidenceIds":[],"note":"No hay datos."},{"criterion":"geo_compatibility","kind":"inferred","value":1,"evidenceIds":[],"note":"Está en Bogotá."}],"summary":"Panadería con datos de contacto, pero falta información para evaluar su ajuste."}';
+    const b = await analyzeBatch(d, o, [out[0].prospectId], fake(sinInfo).p, "t");
+    const x = b.readings[0];
+    expect(x.state).toBe("analyzed");
+    expect(x.known).toEqual(expect.arrayContaining(["Canal de contacto disponible", "Calidad de la evidencia", "Compatibilidad geográfica"]));
+    expect(x.unknown).toEqual(expect.arrayContaining(["Ajuste al cliente ideal", "Necesidad logística observable", "Volumen potencial de entregas"]));
+    expect(x.coverage).toBeGreaterThan(0.2); // 10 contacto + 10 evidencia + 10 geografía = 30 %
+    expect(x.priority).toBeNull();           // por debajo del 40 %: aún sin prioridad (y es correcto)
   });
 });

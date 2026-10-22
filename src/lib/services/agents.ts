@@ -90,11 +90,14 @@ export interface Reading {
   /** analyzed = se llamó a la IA ahora · cached = ya existía un análisis reciente · skipped = no se analizó (motivo) · error */
   state: "analyzed" | "cached" | "skipped" | "error";
   priority: number | null; coverage: number; unknownCount: number; headline: string; warnings: string[];
+  /** Criterios con base y criterios sin base, con su nombre en español (para explicar por qué falta prioridad). */
+  known: string[]; unknown: string[];
   reason?: string; analyzedAt?: string;
 }
 export interface BatchResult { readings: Reading[]; analyzed: number; cached: number; pending: number; stopped?: string }
 
-const EMPTY = { priority: null, coverage: 0, unknownCount: 0, headline: "", warnings: [] as string[] };
+const EMPTY = { priority: null, coverage: 0, unknownCount: 0, headline: "", warnings: [] as string[], known: [] as string[], unknown: [] as string[] };
+const split = (sc: ReturnType<typeof previewScore>) => ({ known: sc.breakdown.filter((b) => b.contribution !== null).map((b) => b.label), unknown: sc.breakdown.filter((b) => b.contribution === null).map((b) => b.label) });
 
 /**
  * Analiza varios prospectos con la IA con límites duros: máximo `max` llamadas por lote, tope de tiempo,
@@ -121,7 +124,7 @@ export async function analyzeBatch(
     const prev = await latestQualification(db, orgId, id);
     if (prev && now() - prev.at.getTime() < CACHE_MS) {
       const sc = previewScore(prev.proposal);
-      readings.push({ prospectId: id, state: "cached", priority: sc.priority, coverage: sc.coverage, unknownCount: sc.unknownCriteria.length, headline: headline(prev.proposal), warnings: [], analyzedAt: prev.at.toISOString() });
+      readings.push({ prospectId: id, state: "cached", priority: sc.priority, coverage: sc.coverage, unknownCount: sc.unknownCriteria.length, headline: headline(prev.proposal), warnings: [], ...split(sc), analyzedAt: prev.at.toISOString() });
       cached++; continue;
     }
     if (stopped) { readings.push({ prospectId: id, state: "skipped", ...EMPTY, reason: stopped }); continue; }
@@ -131,7 +134,7 @@ export async function analyzeBatch(
     const r = await proposeAssessment(db, orgId, id, provider, actor);
     if (r.ok && r.output) {
       const sc = previewScore(r.output);
-      readings.push({ prospectId: id, state: "analyzed", priority: sc.priority, coverage: sc.coverage, unknownCount: sc.unknownCriteria.length, headline: headline(r.output), warnings: r.warnings, analyzedAt: new Date(now()).toISOString() });
+      readings.push({ prospectId: id, state: "analyzed", priority: sc.priority, coverage: sc.coverage, unknownCount: sc.unknownCriteria.length, headline: headline(r.output), warnings: r.warnings, ...split(sc), analyzedAt: new Date(now()).toISOString() });
       analyzed++;
     } else {
       const rateLimited = /límite de uso|Ningún proveedor/i.test(r.error ?? "");

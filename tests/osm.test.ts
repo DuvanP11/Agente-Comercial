@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { HARD_DEADLINE_MS, MIN_ZONE_DEG, OpenStreetMapConnector, categoryKey, ensureMinSize, pickBestArea, filtersFor, phraseFor, safeTerm } from "@/lib/connectors/openstreetmap";
+import { HARD_DEADLINE_MS, MIN_ZONE_DEG, OVERPASS_MIRRORS, OpenStreetMapConnector, categoryKey, ensureMinSize, pickBestArea, filtersFor, phraseFor, safeTerm } from "@/lib/connectors/openstreetmap";
 import { searchCriteria } from "@/lib/connectors/types";
 
 const criteria = (o = {}) => searchCriteria.parse({ city: "Bogotá", categories: ["ferretería"], maxResults: 10, ...o });
@@ -292,5 +292,48 @@ describe("ubicar bien la zona (caso real: «Paloquemao» se resolvía como una e
     await new OpenStreetMapConnector(f, ["u"], noSleep).search(criteria({ zones: ["Paloquemao"] }));
     const m = bodies[0].match(/\((-?[\d.]+),(-?[\d.]+),(-?[\d.]+),(-?[\d.]+)\)/)!;
     expect(Number(m[3]) - Number(m[1])).toBeGreaterThan(0.007); // la zona NO quedó de 100 m
+  });
+});
+
+
+describe("varios servidores de Overpass (caso real: «algunas veces Overpass no responde»)", () => {
+  const A = "https://rapido.test/api", B = "https://oficial.test/api";
+  function twoMirrors(behave: Record<string, () => Response | Promise<Response>>) {
+    const hit: string[] = []; let sleeps = 0;
+    const f = (async (url: string) => {
+      const u = String(url);
+      if (u.includes("nominatim")) return json([NOMINATIM_OK]);
+      hit.push(u); return (behave[u] ?? (() => new Response("x", { status: 502 })))();
+    }) as unknown as typeof fetch;
+    return { f, hit, sleeps: () => sleeps, sleep: async () => { sleeps++; } };
+  }
+  const els = () => json({ elements: [el(1, { name: "Ferretería Uno", phone: "3001112222" })] });
+
+  it("el servidor rápido responde: no se toca el otro", async () => {
+    const m = twoMirrors({ [A]: els });
+    const r = await new OpenStreetMapConnector(m.f, [A, B], m.sleep).search(criteria());
+    expect(m.hit).toEqual([A]); expect(r.prospects).toHaveLength(1); expect(r.errors).toEqual([]);
+  });
+  it("si el primero da 502, pasa al segundo AL INSTANTE (sin esperar) y recupera los datos", async () => {
+    const m = twoMirrors({ [A]: () => new Response("capacity", { status: 502 }), [B]: els });
+    const r = await new OpenStreetMapConnector(m.f, [A, B], m.sleep).search(criteria());
+    expect(m.hit).toEqual([A, B]);
+    expect(r.prospects).toHaveLength(1); expect(r.errors).toEqual([]); // sin avisos: se resolvió con Overpass, no con el respaldo de texto
+    expect(m.sleeps()).toBe(1 + 0); // solo la pausa de 1,1 s de Nominatim; ninguna entre espejos
+  });
+  it("si el primero se agota por tiempo, también pasa al segundo", async () => {
+    const m = twoMirrors({ [A]: () => { const e = new Error("t"); e.name = "TimeoutError"; throw e; }, [B]: els });
+    const r = await new OpenStreetMapConnector(m.f, [A, B], m.sleep).search(criteria());
+    expect(m.hit).toEqual([A, B]); expect(r.prospects).toHaveLength(1);
+  });
+  it("si caen los dos, hace una segunda pasada (con espera) y luego usa el respaldo", async () => {
+    const m = twoMirrors({});
+    const r = await new OpenStreetMapConnector(m.f, [A, B], m.sleep).search(criteria());
+    expect(m.hit).toEqual([A, B, A, B]);
+    expect(r.errors.join(" ")).toMatch(/Overpass no respondió.*502.*servidores públicos/);
+  });
+  it("por defecto usa primero el servidor rápido medido en vivo y el oficial de respaldo", () => {
+    expect(OVERPASS_MIRRORS[0]).toBe("https://overpass.openstreetmap.fr/api/interpreter");
+    expect(OVERPASS_MIRRORS).toContain("https://overpass-api.de/api/interpreter");
   });
 });

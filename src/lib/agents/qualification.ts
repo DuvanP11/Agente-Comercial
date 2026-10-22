@@ -96,6 +96,14 @@ export const qualificationAgent: AgentDef<QualificationInput, QualificationPropo
     else if (inp.prospect.hasEmail || web) assessments.push({ criterion: "contact_channel", kind: "inferred", value: 0.6, evidenceIds: [], note: "Solo tiene correo o web, sin teléfono.", origin: "rule" });
     else assessments.push({ criterion: "contact_channel", kind: "inferred", value: 0, evidenceIds: [], note: "Sin canal de contacto registrado.", origin: "rule" });
 
+    // Calidad de la evidencia: cuántos datos clave tienen evidencia registrada. La calcula el código con tus datos, nunca el modelo.
+    const SLOTS: string[][] = [["name"], ["address"], ["phone"], ["website", "email"]]; // nombre, dirección, teléfono, web o correo
+    const used: string[] = [];
+    for (const fields of SLOTS) { const ev = inp.evidence.find((e) => fields.includes(e.field)); if (ev) used.push(ev.id); }
+    if (used.length > 0) {
+      assessments.push({ criterion: "evidence_quality", kind: "confirmed", value: used.length / SLOTS.length, evidenceIds: used, note: `${used.length} de ${SLOTS.length} datos clave (nombre, dirección, teléfono, web o correo) tienen evidencia registrada.`, origin: "rule" });
+    }
+
     const summaryBad = inventedClaims(out.summary, source);
     let summary = out.summary.trim().slice(0, 500);
     if (summary && looksEnglish(summary)) { warnings.push("El modelo escribió el resumen en inglés; se descartó."); summary = ""; }

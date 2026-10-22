@@ -2,7 +2,15 @@ import { hasContact, type Connector, type ConnectorResult, type ConnectorStatus,
 import { stripAccents } from "../dedup/normalize";
 
 const NOMINATIM = "https://nominatim.openstreetmap.org/search";
-const OVERPASS_DEFAULT = "https://overpass-api.de/api/interpreter";
+/**
+ * Servidores públicos de Overpass, en orden de preferencia. Medido en vivo (2026-10-22, misma consulta, 106 elementos):
+ *  · overpass.openstreetmap.fr → 3–5 s, 200 las dos veces
+ *  · overpass-api.de (oficial) → ~35 s y a veces 502
+ * Otros espejos probados (kumi.systems, private.coffee, z.overpass-api.de) no respondieron. Se puede cambiar con OVERPASS_URL.
+ */
+export const OVERPASS_MIRRORS = ["https://overpass.openstreetmap.fr/api/interpreter", "https://overpass-api.de/api/interpreter"];
+/** Con varios espejos, el primero no puede quedarse esperando: si en 15 s no responde, se pasa al siguiente. */
+const FIRST_MIRROR_TIMEOUT_MS = 15_000;
 const USER_AGENT = "pibox-commercial-intelligence/0.1 (hneira@picap.co)";
 /** Cada llamada externa tiene tope; la búsqueda completa también, para que Vercel nunca mate la función en silencio. */
 // Vercel CORTA toda petición que pase de 60 s (maxDuration): un exceso no devuelve un error legible, rompe la pantalla.
@@ -106,7 +114,7 @@ export class OpenStreetMapConnector implements Connector {
 
   constructor(
     private readonly fetchImpl: typeof fetch = fetch,
-    private readonly overpassUrls: string[] = (process.env.OVERPASS_URL || OVERPASS_DEFAULT).split(",").map((u) => u.trim()).filter(Boolean),
+    private readonly overpassUrls: string[] = (process.env.OVERPASS_URL ? process.env.OVERPASS_URL.split(",").map((u) => u.trim()).filter(Boolean) : OVERPASS_MIRRORS),
     private readonly sleep: (ms: number) => Promise<void> = (ms) => new Promise((r) => setTimeout(r, ms)),
     private readonly now: () => number = Date.now,
   ) {}
@@ -114,8 +122,8 @@ export class OpenStreetMapConnector implements Connector {
   /** Límite duro de la búsqueda en curso (instante). */
   private hardAt = Infinity;
   /** Tiempo de espera de una llamada: el normal, pero nunca más allá del límite duro de la búsqueda. */
-  private timeoutSignal(signal?: AbortSignal): AbortSignal {
-    const ms = Math.min(REQUEST_TIMEOUT_MS, Math.max(2_000, this.hardAt - this.now()));
+  private timeoutSignal(signal?: AbortSignal, capMs = Infinity): AbortSignal {
+    const ms = Math.min(REQUEST_TIMEOUT_MS, capMs, Math.max(2_000, this.hardAt - this.now()));
     return signal ? AbortSignal.any([signal, AbortSignal.timeout(ms)]) : AbortSignal.timeout(ms);
   }
 
@@ -130,13 +138,16 @@ export class OpenStreetMapConnector implements Connector {
 
   private async overpass(query: string, deadline: number, signal?: AbortSignal): Promise<OsmElement[]> {
     let lastError = "sin intentos";
-    for (let attempt = 0; attempt < 3; attempt++) {
+    const n = this.overpassUrls.length;
+    const maxAttempts = n === 1 ? 3 : Math.min(4, n * 2); // con espejos: una pasada por cada uno, dos si hay tiempo
+    for (let attempt = 0; attempt < maxAttempts; attempt++) {
       if (this.now() > deadline) { lastError = "se agotó el tiempo máximo de la búsqueda"; break; }
-      const url = this.overpassUrls[attempt % this.overpassUrls.length];
+      const url = this.overpassUrls[attempt % n];
       try {
         const res = await this.fetchImpl(url, {
           method: "POST", headers: { "User-Agent": USER_AGENT, "Content-Type": "application/x-www-form-urlencoded" },
-          body: new URLSearchParams({ data: query }).toString(), signal: this.timeoutSignal(signal),
+          body: new URLSearchParams({ data: query }).toString(),
+          signal: this.timeoutSignal(signal, attempt === 0 && n > 1 ? FIRST_MIRROR_TIMEOUT_MS : Infinity),
         });
         if (res.ok) {
           const data = (await res.json()) as { elements?: OsmElement[] };
@@ -146,11 +157,12 @@ export class OpenStreetMapConnector implements Connector {
       } catch (e) {
         if (signal?.aborted) throw e;
         if (e instanceof Error && e.name === "TimeoutError") lastError = "el servidor tardó demasiado en responder";
-        else        lastError = e instanceof Error ? e.message : String(e);
+        else lastError = e instanceof Error ? e.message : String(e);
       }
-      if (attempt < 2 && this.now() < deadline) await this.sleep(2000 * 2 ** attempt); // el servidor público se satura: espera creciente
+      // Pasar al siguiente espejo es inmediato; solo se espera (creciente) cuando ya se probaron todos.
+      if (attempt < maxAttempts - 1 && this.now() < deadline && (attempt + 1) % n === 0) await this.sleep(2000 * 2 ** Math.floor(attempt / n));
     }
-    throw new Error(`${lastError} (el servidor público de OpenStreetMap puede estar saturado; reintenta en unos minutos)`);
+    throw new Error(`${lastError} (los servidores públicos de OpenStreetMap pueden estar saturados; reintenta en unos minutos)`);
   }
 
   /** Respaldo cuando Overpass no responde: búsqueda de texto de Nominatim (máx. 40, sin teléfono/web casi nunca). */

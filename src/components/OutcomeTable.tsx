@@ -53,11 +53,20 @@ function ReadingCell({ r, id }: { r?: Reading; id: string }) {
   if (!r) return <span className="text-muted">—</span>;
   if (r.state === "skipped") return <span className="text-muted">{r.reason}</span>;
   if (r.state === "error") return <span className="badge-bad">{r.reason}</span>;
+  const pct = Math.round(r.coverage * 100);
   return (
     <div className="space-y-1">
-      <div><b>{r.priority === null ? "Info. insuficiente" : `Prioridad ${r.priority}`}</b> <span className="text-muted">· cobertura {Math.round(r.coverage * 100)} %</span>{r.state === "cached" && <span className="badge ml-1">análisis previo</span>}</div>
+      <div>
+        {r.priority === null
+          ? <b title="Para calcular una prioridad hace falta conocer al menos el 40 % de los criterios (por peso). Tener teléfono, web o correo cuenta solo en el criterio «canal de contacto».">Aún sin prioridad</b>
+          : <b>Prioridad {r.priority}</b>}
+        <span className="text-muted"> · {pct} % de los criterios con base</span>
+        {r.state === "cached" && <span className="badge ml-1">análisis previo</span>}
+      </div>
       {r.headline && <p>{r.headline}</p>}
-      <p className="text-xs text-muted">{r.unknownCount} criterio(s) sin base. Propuesta de la IA, sin guardar.</p>
+      {(r.known ?? []).length > 0 && <p className="text-xs"><b>Con base:</b> {(r.known ?? []).join(", ")}.</p>}
+      {(r.unknown ?? []).length > 0 && <p className="text-xs text-muted"><b>Falta saber:</b> {(r.unknown ?? []).join(", ")}.</p>}
+      <p className="text-xs text-muted">Propuesta de la IA, sin guardar. {r.priority === null && "Tener contacto no basta para valorarlo: faltan datos del negocio (se ven hablando con él)."}</p>
       <Link className="text-xs underline" href={`/analizar/${id}`}>Revisar y guardar en Analizar</Link>
     </div>
   );

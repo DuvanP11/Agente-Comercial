@@ -9,7 +9,7 @@ vi.mock("@/app/buscar/actions", () => ({
   runSearch: vi.fn(async () => { if (state.fail) throw state.fail; return state.next; }),
   interpretAction: vi.fn(async () => ({ ok: true, warnings: [], output: { city: null, zones: [], categories: ["ropa"], maxResults: null, excludeTerms: [], notes: null, suggestions: ["zapatería"] } })),
   analyzeResultsAction: vi.fn(async (ids: string[]) => ({
-    readings: ids.map((id) => ({ prospectId: id, state: "analyzed", priority: 60, coverage: 0.5, unknownCount: 3, headline: "Tienda con local propio.", warnings: [] })),
+    readings: ids.map((id) => ({ prospectId: id, state: "analyzed", priority: 60, coverage: 0.5, unknownCount: 3, headline: "Tienda con local propio.", warnings: [], known: ["Canal de contacto disponible"], unknown: ["Ajuste al cliente ideal"] })),
     analyzed: ids.length, cached: 0, pending: 0,
   })),
 }));
