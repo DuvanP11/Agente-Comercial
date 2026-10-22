@@ -609,3 +609,15 @@ describe("Entrenamiento: la guía del equipo llega a los agentes, sin saltarse l
     expect(sent).not.toContain("3107555555");
   });
 });
+
+describe("cifras inventadas no se validan contra los ids de evidencia (antes fallaba al azar)", () => {
+  it("aunque un id contenga la cifra, una cifra que no está en los datos se descarta", async () => {
+    const d = await createPgliteDb(); const o = await ensureDefaultOrg(d);
+    const out = await ingestProspects(d, o, [raw({ name: "Tienda", address: "Calle 1", sourceId: "i1" })]);
+    await d.update(evidence).set({ id: "00000000-2003-4000-8000-000000000200" }).where(eq(evidence.entityId, out[0].prospectId)).catch(() => {});
+    const reply = '{"assessments":[{"criterion":"delivery_volume","kind":"inferred","value":0.7,"evidenceIds":[],"note":"Vende 200 pedidos al mes"}],"summary":"Mueve 2003 envíos"}';
+    const r = await proposeAssessment(d, o, out[0].prospectId, fake(reply).p, "t");
+    expect(r.output!.summary).toBe("");
+    expect(r.output!.assessments.find((a) => a.criterion === "delivery_volume")?.note ?? "").not.toMatch(/200/);
+  });
+});

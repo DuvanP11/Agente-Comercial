@@ -1,5 +1,7 @@
 import { and, count, eq, gte, isNull, sql } from "drizzle-orm";
 import { ensureDefaultOrg, getDb } from "@/lib/db/client";
+import { Insight } from "@/components/Insight";
+import { funnelInsight, priorityInsight, qualityInsight, rankInsight, sourceInsight, statusInsight, trendInsight } from "@/lib/dashboard-insights";
 import { ChartCard, Columns, Donut, Funnel, HBars, Spark, TrendChart, SERIES } from "@/components/charts";
 import { funnel, priorityHistogram, PRIORITY_BANDS, weekBuckets } from "@/lib/dashboard";
 import { bySource, byCategory, byCity, quality } from "@/lib/market";
@@ -86,9 +88,11 @@ export default async function Dashboard() {
       <section aria-label="Gráficos" className="grid gap-3 lg:grid-cols-2">
         <ChartCard title="Tendencia semanal" note="Prospectos nuevos y chats abiertos por semana (últimas 12 semanas). Misma escala." legend={[{ label: "Prospectos nuevos", color: SERIES[0] }, { label: "Chats abiertos por WhatsApp", color: SERIES[2] }]}>
           <TrendChart labels={labels} series={[{ name: "Prospectos nuevos", color: SERIES[0], values: wkP.map((b) => b.count) }, { name: "Chats abiertos", color: SERIES[2], values: wkT.map((b) => b.count) }]} />
+          <Insight>{trendInsight(wkP.map((b) => b.count), wkT.map((b) => b.count))}</Insight>
         </ChartCard>
         <ChartCard title="Embudo comercial" note="Cada etapa cuenta a quien llegó a ella o más lejos; el % es frente a la etapa anterior.">
           <Funnel steps={fun} />
+          <Insight>{funnelInsight(fun)}</Insight>
         </ChartCard>
         <ChartCard title="Estado de los prospectos" note="Sin los duplicados excluidos.">
           <Donut center={String(rows.length)} data={[
@@ -98,24 +102,30 @@ export default async function Dashboard() {
             { label: "Por revisar (duplicado)", value: statusCount("needs_review"), color: SERIES[1] },
             { label: "Archivados", value: statusCount("archived"), color: SERIES[4] },
           ]} />
+          <Insight>{statusInsight([{ label: "Nuevos", value: statusCount("new") }, { label: "Calificados", value: statusCount("qualified") }, { label: "Contactados", value: statusCount("contacted") }, { label: "Por revisar (duplicado)", value: statusCount("needs_review") }, { label: "Archivados", value: statusCount("archived") }])}</Insight>
         </ChartCard>
         <ChartCard title="Prioridad comercial" note={`Cuántos prospectos caen en cada franja. ${hist.none} no tienen prioridad todavía (información insuficiente, no es prioridad baja).`}>
           <Columns data={PRIORITY_BANDS.map((l, i) => ({ label: l, value: hist.bands[i] }))} color="var(--s4)" />
+          <Insight>{priorityInsight(hist.bands, hist.none)}</Insight>
         </ChartCard>
         <ChartCard title="Calidad de los datos de contacto" note="Porcentaje de prospectos que tiene cada dato.">
           <HBars unit=" %" max={100} data={[
             { label: "Teléfono", value: q.phone ?? 0, color: SERIES[0] }, { label: "Sitio web", value: q.web ?? 0, color: SERIES[2] },
             { label: "Correo", value: q.email ?? 0, color: SERIES[3] }, { label: "Dirección", value: q.address ?? 0, color: SERIES[1] },
           ]} />
+          <Insight>{qualityInsight(q)}</Insight>
         </ChartCard>
         <ChartCard title="Fuentes de los prospectos" note="De dónde salieron.">
           <HBars data={fuentes.map((g, i) => ({ label: g.label, value: g.total, color: SERIES[i % 3], note: `${g.withPhone} con teléfono` }))} />
+          <Insight>{sourceInsight(fuentes)}</Insight>
         </ChartCard>
         <ChartCard title="Rubros con más prospectos" note="Top 8 por cantidad.">
           <HBars color="var(--s1)" data={rubros.map((g) => ({ label: g.label, value: g.total, note: `${g.withPhone} con teléfono · ${g.qualified} calificados` }))} />
+          <Insight>{rankInsight(byCategory(rows), "rubros")}</Insight>
         </ChartCard>
         <ChartCard title="Ciudades con más prospectos" note="Top 6 por cantidad.">
           <HBars color="var(--s3)" data={ciudades.map((g) => ({ label: g.label, value: g.total, note: `${g.withPhone} con teléfono` }))} />
+          <Insight>{rankInsight(byCity(rows), "ciudades")}</Insight>
         </ChartCard>
       </section>
     </div>

@@ -63,7 +63,8 @@ export const qualificationAgent: AgentDef<QualificationInput, QualificationPropo
   validate: (inp, out) => {
     const warnings: string[] = [];
     const validIds = new Set(inp.evidence.map((e) => e.id));
-    const source = JSON.stringify(inp);
+    // Sin los ids de evidencia: son UUID aleatorios y una cifra inventada podía «aparecer» dentro de uno y pasar como dato real.
+    const source = JSON.stringify({ prospect: inp.prospect, evidence: inp.evidence.map(({ id: _id, ...rest }) => rest) });
     const seen = new Set<string>();
     const assessments: ProposedAssessment[] = [];
 
