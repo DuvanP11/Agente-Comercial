@@ -6,6 +6,13 @@ import { campaignDetail, eligibleProspects } from "@/lib/services/campaigns";
 import { normalizePhone } from "@/lib/dedup/normalize";
 import { closeCampaignAction } from "../actions";
 import { aiReady } from "@/lib/ai/ready";
+import { CampaignCover } from "@/components/CampaignCover";
+import { ChartCard, Donut, Funnel, SERIES } from "@/components/charts";
+import { Insight } from "@/components/Insight";
+import { campaignFunnel, campaignInsight, campaignNumbers } from "@/lib/campaign-stats";
+import { listAttachments } from "@/lib/services/campaign-media";
+import { AttachmentsPanel } from "./AttachmentsPanel";
+import { CampaignEditor } from "./CampaignEditor";
 import { AddProspects } from "./AddProspects";
 import { ProspectRow } from "./ProspectRow";
 
@@ -21,22 +28,46 @@ export default async function CampaignPage({ params }: { params: Promise<{ id: s
   const { campaign: c, items, funnel } = detail;
   const closed = c.status === "closed";
   const ai = aiReady();
+  const attachments = await listAttachments(db, org, id);
+  const n = campaignNumbers(funnel);
+  const coverLen = c.coverData ? c.coverData.length : 0;
   const options = closed ? [] : (await eligibleProspects(db, org, id)).map((p) => ({ id: p.id, name: p.name, city: p.city, category: p.category, hasPhone: !!normalizePhone(p.phone) }));
 
   return (
     <div className="space-y-5">
-      <header>
-        <Link href="/campanas" className="btn mb-2">← Volver a campañas</Link>
-        <h1 className="text-2xl font-bold">{c.name} {closed && <span className="badge">Cerrada</span>}</h1>
-        {c.objective && <p className="text-sm text-muted">{c.objective}</p>}
-        {c.valueProposition && <p className="mt-1 text-sm"><b>Propuesta de valor:</b> {c.valueProposition}</p>}
-        <details className="mt-2 text-sm"><summary className="cursor-pointer underline">Ver mensaje base</summary><p className="card mt-1 whitespace-pre-wrap">{c.template}</p></details>
+      <header className="space-y-3">
+        <Link href="/campanas" className="btn">← Volver a campañas</Link>
+        <div className="card overflow-hidden !p-0">
+          <CampaignCover id={c.id} name={c.name} coverLen={coverLen} height={160} rounded={false} />
+          <div className="space-y-1 p-4">
+            <h1 className="text-2xl font-bold">{c.name} {closed && <span className="badge">Cerrada</span>}</h1>
+            {c.objective && <p className="text-sm text-muted">{c.objective}</p>}
+            {c.valueProposition && <p className="text-sm"><b>Propuesta de valor:</b> {c.valueProposition}</p>}
+            <details className="text-sm"><summary className="cursor-pointer underline">Ver mensaje base</summary><p className="card mt-1 whitespace-pre-wrap">{c.template}</p></details>
+          </div>
+        </div>
       </header>
 
-      <section className="card" aria-label="Embudo">
-        <h2 className="mb-2 font-semibold">Embudo ({items.length} prospectos)</h2>
-        <div className="flex flex-wrap gap-2">{CP_STATUS_KEYS.map((k) => <span key={k} className="badge">{CP_STATUSES[k]}: <b>{funnel[k]}</b></span>)}</div>
+      <section className="grid grid-cols-2 gap-3 lg:grid-cols-5" aria-label="Resumen">
+        {[["Prospectos", n.total, "En esta campaña", "var(--s1)"], ["Contactados", n.contacted, `${n.contactRate} % de los prospectos`, "var(--s2)"], ["Respondieron", n.replied, `${n.replyRate} % de los contactados`, "var(--s3)"], ["Reuniones", n.meetings, "Agendadas o más avanzadas", "var(--s4)"], ["Ganados", n.won, `${n.winRate} % de los contactados`, "var(--s5)"]].map(([l, v, note, col]) => (
+          <div key={String(l)} className="card kpi" style={{ ["--kpi" as string]: String(col) }}><div className="text-xs text-muted">{l}</div><div className="mt-1 text-2xl font-bold">{v}</div><div className="mt-1 text-xs text-muted">{note}</div></div>
+        ))}
       </section>
+
+      <section className="grid gap-3 lg:grid-cols-2" aria-label="Gráficos">
+        <ChartCard title="Embudo de la campaña" note="Cada etapa cuenta a quien llegó a ella o más lejos; el % es frente a la etapa anterior.">
+          <Funnel steps={campaignFunnel(funnel)} />
+          <Insight>{campaignInsight(n)}</Insight>
+        </ChartCard>
+        <ChartCard title="Estado de los prospectos" note="Dónde está cada uno ahora.">
+          <Donut center={String(n.total)} data={CP_STATUS_KEYS.map((k, i) => ({ label: CP_STATUSES[k], value: funnel[k], color: ["#94a3b8", SERIES[0], SERIES[3], SERIES[1], SERIES[4], SERIES[2], "#64748b", "#475569", "#334155"][i] })).filter((d) => d.value > 0)} />
+          <Insight>{n.total === 0 ? "Sin prospectos todavía." : `${funnel.pending} de ${n.total} siguen pendientes de contactar${funnel.not_interested + funnel.lost + funnel.do_not_contact ? `; ${funnel.not_interested + funnel.lost + funnel.do_not_contact} se cerraron sin éxito` : ""}.`}</Insight>
+        </ChartCard>
+      </section>
+
+      <AttachmentsPanel campaignId={id} items={attachments} closed={closed} />
+
+      {!closed && <details className="card"><summary className="cursor-pointer font-semibold">Editar campaña y portada</summary><div className="mt-3"><CampaignEditor campaignId={id} hasCover={coverLen > 0} initial={{ name: c.name, objective: c.objective ?? "", valueProposition: c.valueProposition ?? "", template: c.template }} /></div></details>}
 
       {!closed && <section aria-labelledby="add"><h2 id="add" className="mb-2 font-semibold">Agregar prospectos</h2><AddProspects campaignId={id} options={options} /></section>}
 
@@ -47,7 +78,7 @@ export default async function CampaignPage({ params }: { params: Promise<{ id: s
             <ProspectRow key={i.cp.id} campaignId={id} cpId={i.cp.id} closed={closed}
               p={{ id: i.p.id, name: i.p.name, phone: i.p.phone, city: i.p.city, doNotContact: i.p.doNotContact }}
               status={i.cp.status} followUpDate={bogotaDate(i.cp.nextFollowUpAt)} notes={i.cp.notes ?? ""} followUp={i.followUp}
-              message={i.message ? { body: i.message.body, status: i.message.status } : null} opens={i.opens} aiReady={ai} />))}
+              message={i.message ? { body: i.message.body, status: i.message.status } : null} opens={i.opens} aiReady={ai} attachments={attachments} />))}
       </section>
 
       {!closed && (

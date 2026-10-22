@@ -4,8 +4,9 @@ import { redirect } from "next/navigation";
 import { ensureDefaultOrg, getDb } from "@/lib/db/client";
 import { providerFromEnv } from "@/lib/ai/provider";
 import { draftForCampaignProspect } from "@/lib/services/agents";
+import { deleteAttachment, setCover } from "@/lib/services/campaign-media";
 import {
-  addProspects, approveMessage, closeCampaign, createCampaign, generateDraft, openWhatsApp, saveDraft,
+  updateCampaign, addProspects, approveMessage, closeCampaign, createCampaign, generateDraft, openWhatsApp, saveDraft,
   setCpStatus, setDoNotContact, setFollowUp,
 } from "@/lib/services/campaigns";
 
@@ -83,4 +84,14 @@ export async function aiDraftAction(campaignId: string, cpId: string, revision: 
     console.error("aiDraftAction falló:", e);
     return { error: "No se pudo redactar el borrador." };
   }
+}
+
+export async function updateCampaignAction(campaignId: string, input: { name: string; objective: string; valueProposition: string; template: string }): Promise<ActionResult> {
+  return (await run(campaignId, async (db, org) => { await updateCampaign(db, org, campaignId, input, ACTOR); return { ok: "Campaña actualizada. Los mensajes ya generados no cambian: usa «Generar desde la plantilla» en cada prospecto para actualizarlos." } as ActionResult; })) as ActionResult;
+}
+export async function setCoverAction(campaignId: string, dataUrl: string | null): Promise<ActionResult> {
+  return (await run(campaignId, async (db, org) => { await setCover(db, org, campaignId, dataUrl, ACTOR); return { ok: dataUrl ? "Portada guardada." : "Portada quitada." } as ActionResult; })) as ActionResult;
+}
+export async function deleteAttachmentAction(campaignId: string, attachmentId: string): Promise<ActionResult> {
+  return (await run(campaignId, async (db, org) => { await deleteAttachment(db, org, campaignId, attachmentId, ACTOR); return { ok: "Archivo eliminado." } as ActionResult; })) as ActionResult;
 }

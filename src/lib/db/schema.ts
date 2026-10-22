@@ -1,7 +1,10 @@
 import { sql } from "drizzle-orm";
 import {
-  index, integer, jsonb, pgTable, text, timestamp, uniqueIndex, boolean, numeric,
+  customType, index, integer, jsonb, pgTable, text, timestamp, uniqueIndex, boolean, numeric,
 } from "drizzle-orm/pg-core";
+
+/** Archivos binarios (adjuntos de campañas) como bytea. */
+const bytea = customType<{ data: Buffer; driverData: Buffer }>({ dataType: () => "bytea" });
 
 const id = () => text("id").primaryKey().default(sql`gen_random_uuid()::text`);
 const ts = (name: string) => timestamp(name, { withTimezone: true }).notNull().defaultNow();
@@ -201,8 +204,25 @@ export const campaigns = pgTable("campaigns", {
   template: text("template").notNull(),
   /** active | closed */
   status: text("status").notNull().default("active"),
+  /** Imagen de portada de la campaña (PNG/JPEG/WebP, ya reducida) en base64. */
+  coverData: text("cover_data"),
+  coverMime: text("cover_mime"),
   createdAt: ts("created_at"),
 });
+
+/** Archivos que acompañan a una campaña (imagen, video, PDF, Word). WhatsApp no deja adjuntar por enlace: se descargan o copian para pegarlos en el chat. */
+export const campaignAttachments = pgTable("campaign_attachments", {
+  id: id(),
+  orgId: text("org_id").notNull().references(() => organizations.id),
+  campaignId: text("campaign_id").notNull().references(() => campaigns.id),
+  name: text("name").notNull(),
+  mime: text("mime").notNull(),
+  /** image | video | pdf | doc */
+  kind: text("kind").notNull(),
+  size: integer("size").notNull(),
+  data: bytea("data").notNull(),
+  createdAt: ts("created_at"),
+}, (t) => [index("campaign_attachments_idx").on(t.campaignId)]);
 
 export const campaignProspects = pgTable("campaign_prospects", {
   id: id(),

@@ -3,6 +3,8 @@ import { useState, useTransition } from "react";
 import Link from "next/link";
 import { CP_STATUSES, CP_STATUS_KEYS } from "@/lib/campaigns";
 import { phoneLinks } from "@/lib/contact-links";
+import { WhatsAppPreview } from "@/components/WhatsAppPreview";
+import { attUrl, copyImage, type Att } from "./AttachmentsPanel";
 import {
   aiDraftAction, approveAction, doNotContactAction, draftAction, followUpAction, generateAction, statusAction, whatsappAction, type ActionResult,
 } from "../actions";
@@ -11,7 +13,7 @@ export interface RowProps {
   campaignId: string; cpId: string; closed: boolean;
   p: { id: string; name: string; phone: string | null; city: string | null; doNotContact: boolean };
   status: string; followUpDate: string; notes: string; followUp: string;
-  message: { body: string; status: string } | null; opens: number; aiReady?: boolean;
+  message: { body: string; status: string } | null; opens: number; aiReady?: boolean; attachments?: Att[];
 }
 const FU: Record<string, [string, string]> = { overdue: ["Seguimiento vencido", "badge-bad"], today: ["Seguimiento hoy", "badge-warn"], upcoming: ["Seguimiento próximo", ""] };
 
@@ -64,6 +66,17 @@ export function ProspectRow(props: RowProps) {
               <button className="btn btn-primary" disabled={locked || pending || msgStatus !== "approved" || !p.phone}
                 onClick={() => run(() => whatsappAction(campaignId, cpId, false), (r) => { if (r.url) window.open(r.url, "_blank", "noopener,noreferrer"); })}>Abrir WhatsApp</button>
             </div>
+            {(props.attachments?.length ?? 0) > 0 && (
+              <div className="mt-2 space-y-1 rounded-[var(--radius)] border p-2 text-sm" style={{ borderColor: "var(--color-border)" }}>
+                <b>Material para adjuntar en el chat</b> <span className="text-xs text-muted">(WhatsApp no deja adjuntarlo solo: cópialo o descárgalo y pégalo después de abrir el chat)</span>
+                <div className="flex flex-wrap gap-2">{props.attachments!.map((a) => (
+                  <span key={a.id} className="inline-flex items-center gap-1 rounded border px-2 py-1 text-xs" style={{ borderColor: "var(--color-border)" }}>
+                    {a.name}
+                    <a className="underline" href={attUrl(campaignId, a.id, true)}>descargar</a>
+                    {a.kind === "image" && a.mime !== "image/gif" && <button type="button" className="underline" onClick={() => copyImage(attUrl(campaignId, a.id)).then(() => setRes({ ok: "Imagen copiada: pégala en el chat (Ctrl/⌘ + V)." })).catch(() => setRes({ error: "No se pudo copiar; usa «descargar»." }))}>copiar</button>}
+                  </span>))}</div>
+              </div>)}
+            {body.trim() && <div className="mt-2 max-w-md"><WhatsAppPreview text={body} attachments={props.attachments} /></div>}
             {props.aiReady && !locked && <div className="mt-2"><label className="label" htmlFor={`rev-${cpId}`}>Ajuste para la IA (opcional, p. ej. «más corto» o «más formal»)</label>
               <input id={`rev-${cpId}`} className="input" maxLength={300} value={revision} onChange={(e) => setRevision(e.target.value)} /></div>}
             <p className="mt-1 text-xs text-muted">La IA solo escribe un borrador sin aprobar: nunca incluye precios, descuentos ni promesas que no estén en tu campaña. Guardar o editar retira la aprobación. “Abrir WhatsApp” solo abre el chat con el texto; no envía nada. Luego cambia el estado a “Contactado” cuando lo envíes.</p>

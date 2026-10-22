@@ -1,4 +1,4 @@
-import { and, desc, eq, gte, inArray, notInArray, sql } from "drizzle-orm";
+import { and, desc, eq, getTableColumns, gte, inArray, notInArray, sql } from "drizzle-orm";
 import { z } from "zod";
 import { normalizePhone } from "../dedup/normalize";
 import { whatsappLink } from "../contact-links";
@@ -28,8 +28,27 @@ export async function createCampaign(db: Db, orgId: string, raw: unknown, actor:
   return c;
 }
 
+/** Sin la portada (base64 pesado): para saber si hay se usa `hasCover`. */
+const { coverData: _cd, coverMime: _cm, ...LIST_COLS } = getTableColumns(campaigns);
+
+const updateInput = campaignInput.partial();
+
+/** Edita los textos de la campaña. Los mensajes ya generados no cambian solos: se vuelven a generar desde la plantilla. */
+export async function updateCampaign(db: Db, orgId: string, id: string, raw: unknown, actor: string) {
+  const c = await loadCampaign(db, orgId, id);
+  if (c.status === "closed") throw new Error("La campaña está cerrada.");
+  const parsed = updateInput.safeParse(raw);
+  if (!parsed.success) throw new Error(parsed.error.issues[0].message);
+  const v = parsed.data;
+  await db.update(campaigns).set({
+    ...(v.name !== undefined ? { name: v.name } : {}), ...(v.template !== undefined ? { template: v.template } : {}),
+    ...(v.objective !== undefined ? { objective: v.objective || null } : {}), ...(v.valueProposition !== undefined ? { valueProposition: v.valueProposition || null } : {}),
+  }).where(eq(campaigns.id, id));
+  await db.insert(auditLog).values({ orgId, actor, action: "campaign.update", entity: id });
+}
+
 export async function listCampaigns(db: Db, orgId: string) {
-  const rows = await db.select().from(campaigns).where(eq(campaigns.orgId, orgId)).orderBy(desc(campaigns.createdAt));
+  const rows = await db.select({ ...LIST_COLS, coverLen: sql<number>`coalesce(length(${campaigns.coverData}), 0)::int` }).from(campaigns).where(eq(campaigns.orgId, orgId)).orderBy(desc(campaigns.createdAt));
   const cps = rows.length
     ? await db.select({ campaignId: campaignProspects.campaignId, status: campaignProspects.status }).from(campaignProspects).where(eq(campaignProspects.orgId, orgId))
     : [];
