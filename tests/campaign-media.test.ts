@@ -89,3 +89,26 @@ describe("mensajes listos y cifras de campaña", () => {
     expect(campaignsOverview([{ name: "A", counts: counts({ contacted: 5, replied: 2 }) }])).toMatch(/«A», 29 %|Mejor respuesta/);
   });
 });
+
+import { clamp, COVER_OUT, fitZoom, placeCover, rotatedSize } from "@/lib/cover-geometry";
+
+describe("encuadre de la portada", () => {
+  it("zoom 1 cubre el marco justo y queda centrado; ox/oy mueven dentro del margen", () => {
+    const p = placeCover(2752, 1536, 1, 0, 0); // imagen apaisada ~1.8:1 en un marco 3:1
+    expect(p.dw).toBeCloseTo(COVER_OUT.w); expect(p.dh).toBeGreaterThan(COVER_OUT.h);
+    expect(p.dx).toBeCloseTo(0); expect(p.dy).toBeCloseTo((COVER_OUT.h - p.dh) / 2);
+    const up = placeCover(2752, 1536, 1, 0, -1), down = placeCover(2752, 1536, 1, 0, 1);
+    expect(up.dy).toBeCloseTo(COVER_OUT.h - up.dh); expect(down.dy).toBeCloseTo(0);        // los bordes de la imagen coinciden con los del marco
+    expect(placeCover(2752, 1536, 1, 5, 9)).toEqual(placeCover(2752, 1536, 1, 1, 1));       // se limita a [-1, 1]
+  });
+  it("«ver completa» deja la imagen entera dentro del marco; el zoom se limita", () => {
+    const z = fitZoom(2752, 1536), p = placeCover(2752, 1536, z, 0, 0);
+    expect(p.dh).toBeCloseTo(COVER_OUT.h); expect(p.dw).toBeLessThanOrEqual(COVER_OUT.w + 0.01);
+    expect(placeCover(100, 100, 99, 0, 0).dw).toBeCloseTo(placeCover(100, 100, 4, 0, 0).dw);
+    expect(clamp(5, 0, 1)).toBe(1);
+  });
+  it("girar 90° intercambia ancho y alto (también hacia atrás)", () => {
+    expect(rotatedSize(300, 100, 0)).toEqual({ w: 300, h: 100 }); expect(rotatedSize(300, 100, 1)).toEqual({ w: 100, h: 300 });
+    expect(rotatedSize(300, 100, -1)).toEqual({ w: 100, h: 300 }); expect(rotatedSize(300, 100, 2)).toEqual({ w: 300, h: 100 });
+  });
+});

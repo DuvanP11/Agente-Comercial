@@ -39,7 +39,7 @@ export default async function CampaignPage({ params }: { params: Promise<{ id: s
       <header className="space-y-3">
         <Link href="/campanas" className="btn">← Volver a campañas</Link>
         <div className="card overflow-hidden !p-0">
-          <CampaignCover id={c.id} name={c.name} coverLen={coverLen} height={160} rounded={false} />
+          <CampaignCover id={c.id} name={c.name} coverLen={coverLen} height={220} rounded={false} whole />
           <div className="space-y-1 p-4">
             <h1 className="text-2xl font-bold">{c.name} {closed && <span className="badge">Cerrada</span>}</h1>
             {c.objective && <p className="text-sm text-muted">{c.objective}</p>}
