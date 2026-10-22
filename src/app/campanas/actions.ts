@@ -10,6 +10,8 @@ import { sendCampaignBatch, sendCampaignEmail, type SendOptions, type SendResult
 import { guardCampaign } from "@/lib/guard";
 import { requireUser } from "@/lib/session";
 import { viewerOf } from "@/lib/services/scope";
+import { ingestProspects } from "@/lib/services/prospects";
+import { normalizeEmail } from "@/lib/dedup/normalize";
 import { deleteAttachment, setCover } from "@/lib/services/campaign-media";
 import {
   updateCampaign, addProspects, approveMessage, closeCampaign, createCampaign, generateDraft, openEmail, openWhatsApp, saveDraft,
@@ -33,6 +35,28 @@ export async function createCampaignAction(_: ActionResult, fd: FormData): Promi
   } catch (e) { return fail(e); }
   await track("action", "Creó una campaña", { campana: id }, `/campanas/${id}`);
   redirect(`/campanas/${id}`);
+}
+
+/** Crea un cliente a mano (p. ej. para probar cómo se ve un mensaje o un correo) y lo suma a la campaña. */
+export async function addManualProspectAction(campaignId: string, _: ActionResult, fd: FormData): Promise<ActionResult> {
+  try {
+    const me = await guardCampaign(campaignId);
+    const name = String(fd.get("name") ?? "").trim().slice(0, 120), phone = String(fd.get("phone") ?? "").trim().slice(0, 30), emailRaw = String(fd.get("email") ?? "").trim();
+    const city = String(fd.get("city") ?? "").trim().slice(0, 80), category = String(fd.get("category") ?? "").trim().slice(0, 80);
+    if (!name) return { error: "Escribe el nombre del cliente." };
+    if (!phone && !emailRaw) return { error: "Escribe al menos un teléfono o un correo." };
+    if (phone && phone.replace(/\D/g, "").length < 7) return { error: "El teléfono no parece válido." };
+    const email = emailRaw ? normalizeEmail(emailRaw) : null;
+    if (emailRaw && !email) return { error: "El correo no parece válido." };
+    const { db, org } = await ctx();
+    const [o] = await ingestProspects(db, org, [{ name, category: category || null, website: null, phone: phone || null, email, address: null, city: city || null,
+      sourceName: "Ingreso manual", sourceId: `manual-${crypto.randomUUID()}`, sourceUrl: null, consultedAt: new Date(), isDemo: false }], undefined, viewerOf(me));
+    if (o.status !== "new") return { error: o.status === "needs_review" ? "Se parece a un prospecto que ya existe; revísalo en la Base de prospectos antes de sumarlo." : "Ya existe un prospecto con ese teléfono o correo (o no es tuyo). Usa otro dato para la prueba." };
+    const r = await addProspects(db, org, campaignId, [o.prospectId], ACTOR, viewerOf(me));
+    revalidatePath(`/campanas/${campaignId}`);
+    await track("action", "Agregó un cliente manual a una campaña", { campana: campaignId }, `/campanas/${campaignId}`);
+    return r.added ? { ok: `Listo: «${name}» quedó en la campaña.` } : { error: "Se creó el cliente pero no se pudo sumar a la campaña." };
+  } catch (e) { return fail(e); }
 }
 
 export async function addProspectsAction(campaignId: string, _: ActionResult, fd: FormData): Promise<ActionResult> {
