@@ -51,3 +51,7 @@ Vercel **corta toda petición que pase de 60 s** y el navegador recibe una respu
 
 ## Google Places: prueba de clave y avisos (2026-10-21)
 Integraciones → «Probar clave de Google Places» (solo si hay clave): consulta de 1 resultado con `places.id` como único campo y traduce los errores de Google (API restringida, API no habilitada, facturación, clave inválida, restricción de aplicación, permiso, cuota). Buscar muestra cuántas consultas cobradas hará la búsqueda. Pendiente de confirmar con legal: términos de almacenamiento de datos de Places (ver `GUIA_GOOGLE_CLOUD.md`).
+
+| Investigación web (sitio del prospecto) | Funciona | Lee la página pública del propio negocio (inicio y páginas de contacto, máx. 4 páginas, 500 KB y 8 s cada una), respeta robots.txt, no entra a redes internas (IP privadas, localhost) ni sigue redirecciones a otro sitio; sugiere teléfono, correo y WhatsApp y guarda el origen como evidencia (`source_observed`). No guarda nada sin que la persona pulse «Usar». |
+| Correo asistido | Funciona | «Abrir correo» en la campaña abre `mailto:` con el mensaje aprobado; cuenta como intento por correo. El envío lo hace la persona. |
+| Gmail API / WhatsApp Business Platform | Pendiente | Requieren cliente OAuth / cuenta de Meta Business verificada y plantillas aprobadas (administrador). Ver pasos en la pantalla Integraciones. |

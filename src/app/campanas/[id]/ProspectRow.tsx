@@ -6,12 +6,12 @@ import { phoneLinks } from "@/lib/contact-links";
 import { WhatsAppPreview } from "@/components/WhatsAppPreview";
 import { attUrl, copyImage, type Att } from "./AttachmentsPanel";
 import {
-  aiDraftAction, approveAction, doNotContactAction, draftAction, followUpAction, generateAction, statusAction, whatsappAction, type ActionResult,
+  aiDraftAction, approveAction, doNotContactAction, draftAction, followUpAction, emailAction, generateAction, statusAction, whatsappAction, type ActionResult,
 } from "../actions";
 
 export interface RowProps {
   campaignId: string; cpId: string; closed: boolean;
-  p: { id: string; name: string; phone: string | null; city: string | null; doNotContact: boolean };
+  p: { id: string; name: string; phone: string | null; email?: string | null; city: string | null; doNotContact: boolean };
   status: string; followUpDate: string; notes: string; followUp: string;
   message: { body: string; status: string } | null; opens: number; aiReady?: boolean; attachments?: Att[];
 }
@@ -65,6 +65,8 @@ export function ProspectRow(props: RowProps) {
               <button className="btn" disabled={locked || pending || msgStatus !== "draft"} onClick={() => run(() => approveAction(campaignId, cpId), (r) => { if (!r.error) setMsgStatus("approved"); })}>Aprobar mensaje</button>
               <button className="btn btn-primary" disabled={locked || pending || msgStatus !== "approved" || !p.phone}
                 onClick={() => run(() => whatsappAction(campaignId, cpId, false), (r) => { if (r.url) window.open(r.url, "_blank", "noopener,noreferrer"); })}>Abrir WhatsApp</button>
+              <button className="btn" disabled={locked || pending || msgStatus !== "approved" || !p.email} title={p.email ? "Abre tu programa de correo con el mensaje ya escrito" : "El prospecto no tiene correo: complétalo en su ficha"}
+                onClick={() => run(() => emailAction(campaignId, cpId, false), (r) => { if (r.url) window.location.href = r.url; })}>Abrir correo</button>
             </div>
             {(props.attachments?.length ?? 0) > 0 && (
               <div className="mt-2 space-y-1 rounded-[var(--radius)] border p-2 text-sm" style={{ borderColor: "var(--color-border)" }}>
@@ -80,9 +82,10 @@ export function ProspectRow(props: RowProps) {
             {props.aiReady && !locked && <div className="mt-2"><label className="label" htmlFor={`rev-${cpId}`}>Ajuste para la IA (opcional, p. ej. «más corto» o «más formal»)</label>
               <input id={`rev-${cpId}`} className="input" maxLength={300} value={revision} onChange={(e) => setRevision(e.target.value)} /></div>}
             <p className="mt-1 text-xs text-muted">La IA solo escribe un borrador sin aprobar: nunca incluye precios, descuentos ni promesas que no estén en tu campaña. Guardar o editar retira la aprobación. “Abrir WhatsApp” solo abre el chat con el texto; no envía nada. Luego cambia el estado a “Contactado” cuando lo envíes.</p>
-            {res?.repeatWarning && (
+            {res?.repeatWarning && !/correo/.test(res.repeatWarning) && (
               <p role="alert" className="mt-2 text-sm badge-warn">{res.repeatWarning}{" "}
                 <button className="btn ml-2" disabled={pending} onClick={() => run(() => whatsappAction(campaignId, cpId, true), (r) => { if (r.url) window.open(r.url, "_blank", "noopener,noreferrer"); })}>Sí, abrir de nuevo</button></p>)}
+            {res?.repeatWarning && /correo/.test(res.repeatWarning) && <p><button className="btn" disabled={pending} onClick={() => run(() => emailAction(campaignId, cpId, true), (r) => { if (r.url) window.location.href = r.url; })}>Sí, abrir el correo de nuevo</button></p>}
           </div>
 
           <div className="grid gap-3 md:grid-cols-3">

@@ -10,11 +10,18 @@ import { requireUser } from "@/lib/session";
 export const dynamic = "force-dynamic";
 
 const STEPS = [
-  { n: 1, icon: "search", title: "Encuentra negocios", text: "Busca por ciudad y rubro en OpenStreetMap, en el Registro Mercantil o importa tu propia lista.", href: "/buscar", cta: "Buscar clientes" },
-  { n: 2, icon: "analyze", title: "Califica con evidencia", text: "Valora cada prospecto, deja claro qué sabes y qué no, y obtén una prioridad para saber a quién llamar primero.", href: "/analizar", cta: "Analizar" },
-  { n: 3, icon: "target", title: "Prepara el acercamiento", text: "Elige a los mejores, revisa su plan de acercamiento y súmalos a una campaña.", href: "/captar", cta: "Captar clientes" },
-  { n: 4, icon: "megaphone", title: "Contacta con criterio", text: "Mensajes aprobados por ti, con imágenes, video o PDF. WhatsApp se abre; tú decides cuándo enviar.", href: "/campanas", cta: "Campañas" },
-  { n: 5, icon: "database", title: "Da seguimiento", text: "Registra cada intento y su resultado: contactado, interesado, sin respuesta… y no pierdas ningún seguimiento.", href: "/prospectos", cta: "Base de prospectos" },
+  { n: 1, icon: "search", title: "Busca leads", text: "Describe a quién buscas y la IA arma la búsqueda. Encuentra negocios en mapas, en el Registro Mercantil o en tu propia lista.", href: "/buscar", cta: "Buscar clientes" },
+  { n: 2, icon: "database", title: "Crea prospectos", text: "Cada lead se guarda sin duplicarse, con su fuente. Completa su contacto a mano o leyendo la web del negocio.", href: "/prospectos", cta: "Base de prospectos" },
+  { n: 3, icon: "analyze", title: "Califica con IA", text: "La IA propone una valoración con evidencia y una prioridad; tú decides a quién abordar primero.", href: "/analizar", cta: "Analizar" },
+  { n: 4, icon: "megaphone", title: "Comunícate con IA", text: "La IA redacta el mensaje de cada cliente potencial con tus datos y tu guía. Tú lo apruebas y se abre WhatsApp o el correo.", href: "/campanas", cta: "Campañas" },
+  { n: 5, icon: "flag", title: "Da seguimiento", text: "Cada intento y respuesta queda registrado, con máximo de intentos y seguimientos programados.", href: "/captar", cta: "Captar clientes" },
+];
+
+const AI = [
+  { icon: "search", title: "Entiende tu búsqueda", text: "Conviertes una frase («cosmética en Chapinero») en ciudad, zonas y rubros para buscar." },
+  { icon: "analyze", title: "Propone la calificación", text: "Valora cada prospecto con la evidencia que hay y deja como «desconocido» lo que no sabe." },
+  { icon: "megaphone", title: "Redacta la comunicación", text: "Escribe borradores de WhatsApp personalizados, con el tono que definiste en Entrenamiento de IA." },
+  { icon: "globe", title: "Lee la web del negocio", text: "Busca teléfono, correo y WhatsApp en su página pública y te muestra de dónde salió cada dato." },
 ];
 
 const CAPS = [
@@ -26,6 +33,7 @@ const CAPS = [
 ];
 
 const RULES = [
+  "La IA propone y tú decides: ningún mensaje sale sin tu aprobación. El envío automático se activará cuando se conecte WhatsApp Business o Gmail.",
   "Habla de capacidades reales de PIBOX. Las mejoras se presentan como metas acordadas con el cliente, nunca como promesas.",
   "No des precios, descuentos ni tiempos que PIBOX no haya aprobado: si no tienes la tarifa oficial, ofrece enviarla.",
   "Respeta a quien pide no ser contactado (Ley 1581): márcalo y la plataforma lo bloquea en todas las campañas.",
@@ -55,8 +63,8 @@ export default async function Bienvenida() {
               <span className="rounded-full px-3 py-1 font-semibold" style={{ background: "rgb(255 255 255 / .18)" }}>PIBOX Mensajería · B2B</span>
               <span className="rounded-full px-3 py-1" style={{ background: "rgb(255 255 255 / .12)" }}>{ROLES[me.role as keyof typeof ROLES] ?? me.role}</span>
             </div>
-            <h1 className="text-3xl font-extrabold leading-tight md:text-5xl">{greet}, {first}.<br />Hoy conseguimos clientes que despachan.</h1>
-            <p className="max-w-xl text-base opacity-95 md:text-lg">Entregas a tiempo y visibles, pedido por pedido. Encuentra negocios con envíos, califícalos con evidencia y llévalos de la primera conversación a ser clientes de PIBOX.</p>
+            <h1 className="text-3xl font-extrabold leading-tight md:text-5xl">{greet}, {first}.<br />Encuentra leads y háblales con IA.</h1>
+            <p className="max-w-xl text-base opacity-95 md:text-lg">La plataforma busca negocios con envíos, los convierte en prospectos calificados y prepara con IA la comunicación con cada cliente potencial. Tú apruebas; ella te ahorra el trabajo repetitivo.</p>
             <div className="flex flex-wrap gap-3 pt-2">
               <Link href="/buscar" className="hero-btn"><Icon name="search" size={18} /> Buscar clientes</Link>
               <Link href="/campanas" className="hero-btn ghost"><Icon name="megaphone" size={18} /> Ver campañas</Link>
@@ -88,8 +96,8 @@ export default async function Bienvenida() {
       </section>
 
       <section aria-label="Cómo trabajar">
-        <h2 className="mb-1 text-xl font-bold">Del primer contacto al cliente, en 5 pasos</h2>
-        <p className="mb-3 text-sm text-muted">Este es el camino que sigue cada prospecto hasta convertirse en cliente de PIBOX.</p>
+        <h2 className="mb-1 text-xl font-bold">Del lead al cliente, en 5 pasos</h2>
+        <p className="mb-3 text-sm text-muted">Este es el camino de cada negocio hasta convertirse en cliente de PIBOX.</p>
         <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-5">
           {STEPS.map((s) => (
             <Link key={s.n} href={s.href} className="card step-card flex flex-col gap-3">
@@ -101,9 +109,22 @@ export default async function Bienvenida() {
         </div>
       </section>
 
+      <section aria-label="Qué hace la IA">
+        <h2 className="mb-1 text-xl font-bold">Qué hace la IA por ti</h2>
+        <p className="mb-3 text-sm text-muted">Siempre propone; tú revisas, guardas o apruebas. Nunca inventa datos ni envía por su cuenta.</p>
+        <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
+          {AI.map((c) => (
+            <div key={c.title} className="card cap-card space-y-2">
+              <span className="kpi-icon" style={{ ["--kpi" as string]: "var(--color-primary)", width: "2.4rem", height: "2.4rem", color: "var(--color-primary)" }}><Icon name={c.icon} size={20} /></span>
+              <div className="font-bold">{c.title}</div><p className="text-sm text-muted">{c.text}</p>
+            </div>
+          ))}
+        </div>
+      </section>
+
       <section aria-label="Qué ofrece PIBOX">
-        <h2 className="mb-1 text-xl font-bold">Lo que PIBOX le ofrece a un cliente</h2>
-        <p className="mb-3 text-sm text-muted">Capacidades reales para usar en tu conversación comercial.</p>
+        <h2 className="mb-1 text-xl font-bold">Argumentos de PIBOX para tu conversación</h2>
+        <p className="mb-3 text-sm text-muted">Capacidades reales del servicio que puedes mencionar a un cliente potencial.</p>
         <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-5">
           {CAPS.map((c) => (
             <div key={c.title} className="card cap-card space-y-2">

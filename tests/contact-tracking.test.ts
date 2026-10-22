@@ -97,3 +97,26 @@ describe("gestión de contacto con base de datos", () => {
     expect((await d.select().from(prospects).where(eq(prospects.id, a.prospectId)))[0].contactOutcome).toBe("interested");
   });
 });
+
+import { openEmail } from "@/lib/services/campaigns";
+describe("correo asistido desde una campaña", () => {
+  it("abre el correo con el mensaje aprobado, cuenta como intento por correo y exige correo válido, aprobación y cupo", async () => {
+    const d = await createPgliteDb(); const o = await ensureDefaultOrg(d);
+    const [a, b] = await ingestProspects(d, o, [raw({ name: "Con Correo", email: "ventas@concorreo.co", sourceId: "e1" }), raw({ name: "Sin Correo", phone: "3107778899", sourceId: "e2" })]);
+    const camp = (await createCampaign(d, o, { name: "Correos", template: DEFAULT_TEMPLATE }, "t")).id;
+    await addProspects(d, o, camp, [a.prospectId, b.prospectId], "t");
+    const items = (await campaignDetail(d, o, camp)).items;
+    const cpA = items.find((i) => i.p.name === "Con Correo")!.cp.id, cpB = items.find((i) => i.p.name === "Sin Correo")!.cp.id;
+    await expect(openEmail(d, o, cpA, "t")).rejects.toThrow(/aprobar el mensaje/);
+    await generateDraft(d, o, cpA); await approveMessage(d, o, cpA, "t");
+    const r = await openEmail(d, o, cpA, "t");
+    expect(r.url).toMatch(/^mailto:ventas@concorreo\.co\?subject=Correos&body=Hola%2C%20equipo%20de%20Con%20Correo/);
+    expect((await openEmail(d, o, cpA, "t")).repeatWarning).toMatch(/Ya abriste el correo/);       // dentro de 24 h pide confirmación
+    const [p] = await d.select().from(prospects).where(eq(prospects.id, a.prospectId));
+    expect(p).toMatchObject({ contactAttempts: 1, contactOutcome: "contacted" });
+    const acts = await d.select().from(activities).where(eq(activities.prospectId, a.prospectId));
+    expect(acts.some((x) => x.type === "email_opened") && acts.some((x) => x.type === "contact_attempt")).toBe(false); // el intento lo cuenta la apertura, sin duplicar actividad
+    await generateDraft(d, o, cpB); await approveMessage(d, o, cpB, "t");
+    await expect(openEmail(d, o, cpB, "t")).rejects.toThrow(/no tiene un correo válido/);
+  });
+});

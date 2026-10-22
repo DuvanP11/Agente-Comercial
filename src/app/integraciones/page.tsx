@@ -34,7 +34,10 @@ export default function Integraciones() {
                 <td className="text-sm">{r.status.state === "not_configured" ? `Falta ${r.status.missing.join(", ")}. ${r.status.howTo}` : r.status.state === "error" ? r.status.message : NO_KEY.has(r.id) ? (r.id === "business_directory" ? "Datos abiertos del Registro Mercantil (Confecámaras, datos.gov.co). No requiere clave; trae empresas y NIT, sin teléfono ni correo." : "Servicio público gratuito; a veces tarda o se satura.") : "La clave existe; el primer uso real confirma si es válida."}</td></tr>
             ))}
             {PENDING_CONNECTORS.map((c) => (
-              <tr key={c.id}><td>{c.label}</td><td><span className="badge">No implementado</span></td><td className="text-sm">{c.why}</td></tr>
+              <tr key={c.id}><td>{c.label}</td>
+                <td><span className={`badge ${c.tone === "ok" ? "badge-ok" : c.tone === "warn" ? "badge-warn" : ""}`}>{c.badge}</span></td>
+                <td className="text-sm">{c.why}
+                  {c.steps && <details className="mt-2"><summary className="cursor-pointer underline">Qué hay que hacer para conectarlo</summary><ol className="mt-1 list-decimal space-y-1 pl-5">{c.steps.map((st) => <li key={st}>{st}</li>)}</ol><p className="mt-1 text-xs text-muted">Pasos según la documentación del proveedor; confírmalos con quien administra la cuenta.</p></details>}</td></tr>
             ))}
           </tbody>
         </table>

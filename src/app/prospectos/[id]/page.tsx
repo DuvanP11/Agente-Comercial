@@ -11,6 +11,7 @@ import { mailtoLink, mapSearchLink, phoneLinks, safeWebUrl } from "@/lib/contact
 import { CRITERION_LABELS, type ScoreResult } from "@/lib/scoring/score";
 import { SEARCH_ID } from "@/lib/services/searches";
 import { OwnerAssign } from "./OwnerAssign";
+import { WebResearch } from "./WebResearch";
 import { users } from "@/lib/db/schema";
 import { ContactManager } from "./ContactManager";
 import { stateOf } from "@/lib/services/contact-tracking";
@@ -106,6 +107,7 @@ export default async function Ficha({ params, searchParams }: { params: Promise<
         <h2 className="mb-2 font-semibold">Completar contacto</h2>
         <ContactEditor prospectId={id} phone={p.phone ?? ""} website={p.website ?? ""} email={p.email ?? ""}
           googleUrl={`https://www.google.com/search?q=${encodeURIComponent([p.name, p.city, "teléfono contacto"].filter(Boolean).join(" "))}`} />
+        {p.website && safeWebUrl(p.website) && <div className="mt-3"><WebResearch prospectId={id} website={p.website} /></div>}
       </section>
 
       <section className="card" aria-label="Gestión de contacto">

@@ -1,7 +1,7 @@
 import { and, desc, eq, getTableColumns, gte, inArray, notInArray, sql } from "drizzle-orm";
 import { z } from "zod";
 import { normalizePhone } from "../dedup/normalize";
-import { whatsappLink } from "../contact-links";
+import { mailtoLink, whatsappLink } from "../contact-links";
 import {
   approvalBlockers, CLOSED_STATUSES, CP_STATUS_KEYS, followUpFromDate, followUpState, funnel, renderTemplate,
   type CpStatus,
@@ -211,6 +211,34 @@ export async function openWhatsApp(db: Db, orgId: string, cpId: string, actor: s
   if (!url) throw new Error("Número inválido para WhatsApp.");
   await db.insert(activities).values({ orgId, prospectId: p.id, type: "whatsapp_opened", actor, detail: { campaignId: cp.campaignId, cpId, messageId: m.id, note: "Se abrió el chat; el envío lo hace el usuario." } });
   await registerAttempt(db, orgId, p.id, { channel: "whatsapp", activity: false }, actor);
+  return { url };
+}
+
+/**
+ * Abre el programa de correo con el mensaje APROBADO ya escrito (mailto:). Registra «abierto», nunca «enviado»: la persona revisa y envía.
+ * Cuenta como un intento de contacto por correo.
+ */
+export async function openEmail(db: Db, orgId: string, cpId: string, actor: string, confirmRepeat = false): Promise<{ url?: string; repeatWarning?: string }> {
+  const { cp, p, c } = await loadCp(db, orgId, cpId);
+  if (c.status === "closed") throw new Error("La campaña está cerrada.");
+  if (p.doNotContact) throw new Error("Este prospecto pidió no ser contactado.");
+  if (CLOSED_STATUSES.includes(cp.status as CpStatus)) throw new Error("La gestión de este prospecto está cerrada.");
+  await assertCanContact(db, orgId, p);
+  const to = mailtoLink(p.email);
+  if (!to || !p.emailKey) throw new Error("El prospecto no tiene un correo válido. Complétalo en su ficha.");
+  const [m] = await db.select().from(messages).where(and(eq(messages.campaignId, cp.campaignId), eq(messages.prospectId, p.id), eq(messages.status, "approved")));
+  if (!m) throw new Error("Primero debes aprobar el mensaje.");
+  const since = new Date(Date.now() - REPEAT_WINDOW_MS);
+  const [recent] = await db.select({ at: activities.createdAt }).from(activities).where(and(
+    eq(activities.orgId, orgId), eq(activities.prospectId, p.id), eq(activities.type, "email_opened"), gte(activities.createdAt, since),
+  )).orderBy(desc(activities.createdAt)).limit(1);
+  if (recent && !confirmRepeat) {
+    const h = Math.max(1, Math.round((Date.now() - recent.at.getTime()) / 3600_000));
+    return { repeatWarning: `Ya abriste el correo para este prospecto hace ${h} h. Confirma si quieres contactarlo de nuevo.` };
+  }
+  const url = `${to}?subject=${encodeURIComponent(c.name)}&body=${encodeURIComponent(m.body)}`;
+  await db.insert(activities).values({ orgId, prospectId: p.id, type: "email_opened", actor, detail: { campaignId: cp.campaignId, cpId, messageId: m.id, note: "Se abrió el correo; el envío lo hace el usuario." } });
+  await registerAttempt(db, orgId, p.id, { channel: "email", activity: false }, actor);
   return { url };
 }
 

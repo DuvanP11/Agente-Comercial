@@ -11,7 +11,7 @@ import { requireUser } from "@/lib/session";
 import { viewerOf } from "@/lib/services/scope";
 import { deleteAttachment, setCover } from "@/lib/services/campaign-media";
 import {
-  updateCampaign, addProspects, approveMessage, closeCampaign, createCampaign, generateDraft, openWhatsApp, saveDraft,
+  updateCampaign, addProspects, approveMessage, closeCampaign, createCampaign, generateDraft, openEmail, openWhatsApp, saveDraft,
   setCpStatus, setDoNotContact, setFollowUp,
 } from "@/lib/services/campaigns";
 
@@ -80,6 +80,11 @@ export async function approveAction(campaignId: string, cpId: string): Promise<A
 export async function whatsappAction(campaignId: string, cpId: string, confirmRepeat: boolean): Promise<ActionResult> {
   const r = (await run(campaignId, async (db, org) => openWhatsApp(db, org, cpId, ACTOR, confirmRepeat) as Promise<ActionResult>)) as ActionResult;
   if (r.url) await track("action", "Abrió WhatsApp desde una campaña", { campana: campaignId }, `/campanas/${campaignId}`); // solo si de verdad se abrió el chat
+  return r;
+}
+export async function emailAction(campaignId: string, cpId: string, confirmRepeat: boolean): Promise<ActionResult> {
+  const r = (await run(campaignId, async (db, org) => openEmail(db, org, cpId, ACTOR, confirmRepeat) as Promise<ActionResult>)) as ActionResult;
+  if (r.url) await track("action", "Abrió el correo desde una campaña", { campana: campaignId }, `/campanas/${campaignId}`);
   return r;
 }
 export async function doNotContactAction(campaignId: string, prospectId: string, flag: boolean): Promise<ActionResult> {
