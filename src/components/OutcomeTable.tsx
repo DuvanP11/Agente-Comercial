@@ -58,7 +58,7 @@ function ReadingCell({ r, id }: { r?: Reading; id: string }) {
     <div className="space-y-1">
       <div>
         {r.priority === null
-          ? <b title="Para calcular una prioridad hace falta conocer al menos el 40 % de los criterios (por peso). Tener teléfono, web o correo cuenta solo en el criterio «canal de contacto».">Aún sin prioridad</b>
+          ? <b title="Para calcular una prioridad hace falta conocer el mínimo de criterios (por peso) definido en Configuración (40 % de arranque). Tener teléfono, web o correo cuenta solo en el criterio «canal de contacto».">Aún sin prioridad</b>
           : <b>Prioridad {r.priority}</b>}
         <span className="text-muted"> · {pct} % de los criterios con base</span>
         {r.state === "cached" && <span className="badge ml-1">análisis previo</span>}

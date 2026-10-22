@@ -552,3 +552,28 @@ describe("calidad de la evidencia: la calcula el código con los datos reales", 
     expect(x.priority).toBeNull();           // por debajo del 40 %: aún sin prioridad (y es correcto)
   });
 });
+
+import { getScoringConfig, saveScoringConfig, parseScoring, DEFAULT_SCORING } from "@/lib/services/settings";
+import { saveAssessment } from "@/lib/services/analysis";
+
+describe("Configuración: pesos y cobertura mínima", () => {
+  it("sin configurar usa los valores de arranque; valida rangos", async () => {
+    const d = await createPgliteDb(); const o = await ensureDefaultOrg(d);
+    expect(await getScoringConfig(d, o)).toEqual(DEFAULT_SCORING);
+    expect(() => parseScoring({ weights: { icp_fit: -1 }, minCoverage: 0.4 })).toThrow(/entero entre 0 y 100/);
+    expect(() => parseScoring({ weights: Object.fromEntries(Object.keys(DEFAULT_SCORING.weights).map((k) => [k, 0])), minCoverage: 0.4 })).toThrow(/más de 0/);
+    expect(() => parseScoring({ weights: {}, minCoverage: 0.95 })).toThrow(/entre 10 % y 90 %/);
+  });
+  it("guardar cambia el puntaje de quien ya estaba valorado y los siguientes cálculos", async () => {
+    const d = await createPgliteDb(); const o = await ensureDefaultOrg(d);
+    const out = await ingestProspects(d, o, [raw({ name: "Hornitos", phone: "3107555555", sourceId: "c1" })]);
+    const id = out[0].prospectId;
+    const a = { kind: "inferred", value: 1, evidenceIds: [] };
+    const s1 = await saveAssessment(d, o, id, { contact_channel: a }, "t");
+    expect(s1.priority).toBeNull(); // 10 % de cobertura < 40 %
+    const r = await saveScoringConfig(d, o, { weights: { ...DEFAULT_SCORING.weights, contact_channel: 50 }, minCoverage: 0.3 }, "t");
+    expect(r.recalculated).toBe(1);
+    const [p] = await d.select().from(prospects).where(eq(prospects.id, id));
+    expect((p.scoreJson as { priority: number | null }).priority).toBe(100); // 50 de 140 = 36 % ≥ 30 % mínimo: ya hay prioridad
+  });
+});

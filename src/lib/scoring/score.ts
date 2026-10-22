@@ -54,6 +54,7 @@ export const MIN_COVERAGE = 0.4;
 export function scoreProspect(
   assessments: Partial<Record<CriterionKey, CriterionAssessment>>,
   weights: Record<CriterionKey, number> = { ...DEFAULT_WEIGHTS },
+  minCoverage: number = MIN_COVERAGE,
 ): ScoreResult {
   const keys = Object.keys(weights) as CriterionKey[];
   const totalWeight = keys.reduce((s, k) => s + weights[k], 0);
@@ -74,7 +75,7 @@ export function scoreProspect(
   });
 
   const coverage = totalWeight ? knownWeight / totalWeight : 0;
-  const priority = knownWeight > 0 && coverage >= MIN_COVERAGE ? Math.round((earned / knownWeight) * 100) : null;
+  const priority = knownWeight > 0 && coverage >= minCoverage - 1e-9 ? Math.round((earned / knownWeight) * 100) : null;
   return {
     priority,
     coverage,

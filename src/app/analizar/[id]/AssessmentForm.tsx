@@ -12,8 +12,8 @@ const KEYS = Object.keys(DEFAULT_WEIGHTS) as CriterionKey[];
 interface Row { kind: string; value: string; note: string; ev: string[] }
 const snap = (n: number) => String(VALUES.reduce((a, b) => (Math.abs(b - n) < Math.abs(a - n) ? b : a)));
 
-export function AssessmentForm({ prospectId, evidence, current, status, aiReady = false, saved }: {
-  prospectId: string; evidence: Ev[]; current: Partial<Record<CriterionKey, CriterionAssessment>>; status: string; aiReady?: boolean;
+export function AssessmentForm({ weights = DEFAULT_WEIGHTS, prospectId, evidence, current, status, aiReady = false, saved }: {
+  weights?: Record<CriterionKey, number>; prospectId: string; evidence: Ev[]; current: Partial<Record<CriterionKey, CriterionAssessment>>; status: string; aiReady?: boolean;
   saved?: { proposal: QualificationProposal; at: string };
 }) {
   const [s, action, pending] = useActionState<AnalysisState, FormData>(saveAction.bind(null, prospectId), {});
@@ -70,7 +70,7 @@ export function AssessmentForm({ prospectId, evidence, current, status, aiReady 
           const r = rows[k];
           return (
             <fieldset key={k} className="card space-y-2">
-              <legend className="px-1 font-semibold">{CRITERION_LABELS[k]} <span className="text-xs font-normal text-muted">(peso {DEFAULT_WEIGHTS[k]})</span>
+              <legend className="px-1 font-semibold">{CRITERION_LABELS[k]} <span className="text-xs font-normal text-muted">(peso {weights[k]})</span>
                 {origin[k] === "model" && <span className="badge ml-2">IA</span>}{origin[k] === "rule" && <span className="badge ml-2">regla</span>}</legend>
               <div className="grid gap-2 md:grid-cols-3">
                 <div><label className="label" htmlFor={`${k}_kind`}>Naturaleza</label>

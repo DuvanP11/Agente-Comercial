@@ -1,4 +1,5 @@
 import { and, desc, eq } from "drizzle-orm";
+import { getScoringConfig, DEFAULT_SCORING } from "./settings";
 import { scoreProspect, type CriterionAssessment, type CriterionKey } from "../scoring/score";
 import { runAgent, type RunResult } from "../agents/core";
 import { draftingAgent } from "../agents/drafting";
@@ -59,10 +60,10 @@ export function listRuns(db: Db, orgId: string, limit = 30) {
 const QUALIFICATION = "qualification";
 const CACHE_MS = 24 * 3600_000;
 
-export function previewScore(p: QualificationProposal) {
+export function previewScore(p: QualificationProposal, cfg: { weights: Record<CriterionKey, number>; minCoverage: number } = DEFAULT_SCORING) {
   const map: Partial<Record<CriterionKey, CriterionAssessment>> = {};
   for (const a of p.assessments) map[a.criterion] = { value: a.value, kind: a.kind, evidenceIds: a.evidenceIds, note: a.note };
-  return scoreProspect(map);
+  return scoreProspect(map, cfg.weights, cfg.minCoverage);
 }
 
 /** Lo más útil que dijo el modelo, en una línea: su resumen o la nota de un criterio con base. */
@@ -110,6 +111,7 @@ export async function analyzeBatch(
   const now = opts.now ?? Date.now;
   const max = opts.max ?? 8, deadline = now() + (opts.deadlineMs ?? 45_000);
   const ids = [...new Set(prospectIds)].slice(0, 60);
+  const cfg = await getScoringConfig(db, orgId);
   const readings: Reading[] = [];
   let analyzed = 0, cached = 0, stopped: string | undefined;
 
@@ -123,7 +125,7 @@ export async function analyzeBatch(
 
     const prev = await latestQualification(db, orgId, id);
     if (prev && now() - prev.at.getTime() < CACHE_MS) {
-      const sc = previewScore(prev.proposal);
+      const sc = previewScore(prev.proposal, cfg);
       readings.push({ prospectId: id, state: "cached", priority: sc.priority, coverage: sc.coverage, unknownCount: sc.unknownCriteria.length, headline: headline(prev.proposal), warnings: [], ...split(sc), analyzedAt: prev.at.toISOString() });
       cached++; continue;
     }
@@ -133,7 +135,7 @@ export async function analyzeBatch(
 
     const r = await proposeAssessment(db, orgId, id, provider, actor);
     if (r.ok && r.output) {
-      const sc = previewScore(r.output);
+      const sc = previewScore(r.output, cfg);
       readings.push({ prospectId: id, state: "analyzed", priority: sc.priority, coverage: sc.coverage, unknownCount: sc.unknownCriteria.length, headline: headline(r.output), warnings: r.warnings, ...split(sc), analyzedAt: new Date(now()).toISOString() });
       analyzed++;
     } else {

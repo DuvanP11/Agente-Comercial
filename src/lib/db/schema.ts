@@ -234,3 +234,10 @@ export const agentRuns = pgTable("agent_runs", {
   startedAt: ts("started_at"),
   finishedAt: timestamp("finished_at", { withTimezone: true }),
 }, (t) => [index("agent_runs_org_idx").on(t.orgId, t.startedAt)]);
+
+/** Ajustes por organización (hoy: pesos de los criterios y cobertura mínima para mostrar prioridad). */
+export const orgSettings = pgTable("org_settings", {
+  orgId: text("org_id").primaryKey().references(() => organizations.id),
+  scoring: jsonb("scoring"),
+  updatedAt: ts("updated_at"),
+});

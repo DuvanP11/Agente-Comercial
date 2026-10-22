@@ -8,6 +8,7 @@ import { CRITERION_LABELS } from "@/lib/scoring/score";
 import { aiReady } from "@/lib/ai/ready";
 import { latestQualification } from "@/lib/services/agents";
 import { ensureDefaultOrg } from "@/lib/db/client";
+import { getScoringConfig } from "@/lib/services/settings";
 import { AssessmentForm } from "./AssessmentForm";
 
 export const dynamic = "force-dynamic";
@@ -19,7 +20,9 @@ export default async function Analisis({ params }: { params: Promise<{ id: strin
   if (!p) notFound();
   const ev = await evidenceFor(db, id);
   const s = p.scoreJson as StoredScore | null;
-  const saved = await latestQualification(db, await ensureDefaultOrg(db), id);
+  const orgId = await ensureDefaultOrg(db);
+  const cfg = await getScoringConfig(db, orgId);
+  const saved = await latestQualification(db, orgId, id);
   const blocked = p.status === "excluded_duplicate" || p.status === "needs_review";
   return (
     <div className="space-y-4">
@@ -33,10 +36,10 @@ export default async function Analisis({ params }: { params: Promise<{ id: strin
         <section className="card text-sm" aria-label="Resultado">
           <p><b>Prioridad comercial: {s.priority ?? "información insuficiente"}</b> · cobertura {(s.coverage * 100).toFixed(0)} % · respaldo en evidencia {(s.evidenceBacked * 100).toFixed(0)} %</p>
           {s.unknownCriteria.length > 0 && <p className="text-muted">Criterios desconocidos (no cuentan): {s.unknownCriteria.map((k) => CRITERION_LABELS[k]).join(", ")}.</p>}
-          <p className="text-xs text-muted">Valorado por {s.assessedBy} el {new Date(s.assessedAt).toLocaleString("es-CO")}. La prioridad no es una probabilidad de contratación; se necesita al menos 40 % de cobertura para mostrarla.</p>
+          <p className="text-xs text-muted">Valorado por {s.assessedBy} el {new Date(s.assessedAt).toLocaleString("es-CO")}. La prioridad no es una probabilidad de contratación; se necesita al menos {Math.round(cfg.minCoverage * 100)} % de cobertura para mostrarla.</p>
         </section>
       )}
-      <AssessmentForm prospectId={id} evidence={ev.map((e) => ({ id: e.id, field: e.field, observedValue: e.observedValue, sourceName: e.sourceName }))} current={s?.assessments ?? {}} status={p.status} aiReady={aiReady()} saved={saved ? { proposal: saved.proposal, at: saved.at.toISOString() } : undefined} />
+      <AssessmentForm weights={cfg.weights} prospectId={id} evidence={ev.map((e) => ({ id: e.id, field: e.field, observedValue: e.observedValue, sourceName: e.sourceName }))} current={s?.assessments ?? {}} status={p.status} aiReady={aiReady()} saved={saved ? { proposal: saved.proposal, at: saved.at.toISOString() } : undefined} />
     </div>
   );
 }

@@ -19,6 +19,6 @@ export const NAV: NavItem[] = [
   { slug: "entrenamiento", label: "Entrenamiento de IA", href: "/m/entrenamiento", status: "pending", phase: "8" },
   { slug: "integraciones", label: "Integraciones", href: "/integraciones", status: "partial", phase: "7" },
   { slug: "reportes", label: "Reportes", href: "/reportes", status: "partial", phase: "9", note: "Descarga CSV de prospectos; más reportes pendientes." },
-  { slug: "configuracion", label: "Configuración", href: "/m/configuracion", status: "pending", phase: "2" },
+  { slug: "configuracion", label: "Configuración", href: "/configuracion", status: "partial", phase: "2", note: "Pesos del puntaje y cobertura mínima. Usuarios y roles: pendientes." },
   { slug: "apariencia", label: "Apariencia y marca", href: "/apariencia", status: "ready", phase: "2" },
 ];

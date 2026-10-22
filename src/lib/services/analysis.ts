@@ -2,6 +2,7 @@ import { and, eq, inArray } from "drizzle-orm";
 import type { Db } from "../db/client";
 import { auditLog, evidence, prospects } from "../db/schema";
 import { validateClaim } from "../evidence/types";
+import { getScoringConfig } from "./settings";
 import { criterionAssessment, scoreProspect, DEFAULT_WEIGHTS, type CriterionAssessment, type CriterionKey, type ScoreResult } from "../scoring/score";
 
 export type StoredScore = ScoreResult & {
@@ -31,7 +32,8 @@ export async function saveAssessment(
     if (a.evidenceIds.some((id) => !ownEvidence.has(id))) throw new Error(`Criterio ${key}: cita una evidencia que no pertenece a este prospecto.`);
     clean[key] = a;
   }
-  const result = scoreProspect(clean);
+  const cfg = await getScoringConfig(db, orgId);
+  const result = scoreProspect(clean, cfg.weights, cfg.minCoverage);
   const stored: StoredScore = { ...result, assessments: clean, assessedAt: new Date().toISOString(), assessedBy: actor };
   await db.update(prospects).set({ scoreJson: stored }).where(eq(prospects.id, prospectId));
   await db.insert(auditLog).values({ orgId, actor, action: "prospect.assessed", entity: prospectId, detail: { priority: result.priority, coverage: result.coverage } });
