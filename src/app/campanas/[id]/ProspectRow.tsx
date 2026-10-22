@@ -65,7 +65,13 @@ export function ProspectRow(props: RowProps) {
               <button className="btn" disabled={locked || pending || !body.trim()} onClick={() => run(() => draftAction(campaignId, cpId, body), (r) => { if (!r.error) setMsgStatus("draft"); })}>Guardar borrador</button>
               <button className="btn" disabled={locked || pending || msgStatus !== "draft"} onClick={() => run(() => approveAction(campaignId, cpId), (r) => { if (!r.error) setMsgStatus("approved"); })}>Aprobar mensaje</button>
               <button className="btn btn-primary" disabled={locked || pending || msgStatus !== "approved" || !p.phone}
-                onClick={() => run(() => whatsappAction(campaignId, cpId, false), (r) => { if (r.url) window.open(r.url, "_blank", "noopener,noreferrer"); })}>Abrir WhatsApp</button>
+                onClick={() => run(() => whatsappAction(campaignId, cpId, false), (r) => {
+                  if (!r.url) return;
+                  // Con emojis: el enlace no los transporta bien, así que se abre el chat vacío y el mensaje completo queda copiado para pegarlo.
+                  if (/\p{Extended_Pictographic}/u.test(body) && navigator.clipboard) {
+                    void navigator.clipboard.writeText(body).then(() => { setRes({ ok: "Mensaje copiado con sus emojis: en el chat de WhatsApp pégalo con Cmd+V (Ctrl+V en Windows) y envía." }); window.open(r.url!.split("?")[0], "_blank", "noopener,noreferrer"); }, () => window.open(r.url, "_blank", "noopener,noreferrer"));
+                  } else window.open(r.url, "_blank", "noopener,noreferrer");
+                })}>Abrir WhatsApp</button>
               <button className="btn" disabled={!body.trim()} title="Copia el mensaje completo, con emojis, para pegarlo en el chat" onClick={() => { void navigator.clipboard?.writeText(body).then(() => setRes({ ok: "Mensaje copiado: pégalo en el chat de WhatsApp." }), () => setRes({ error: "No se pudo copiar; selecciona el texto y cópialo a mano." })); }}>Copiar mensaje</button>
               <button className="btn" disabled={locked || pending || msgStatus !== "approved" || !p.email} title={p.email ? "Abre tu programa de correo con el mensaje ya escrito" : "El prospecto no tiene correo: complétalo en su ficha"}
                 onClick={() => run(() => emailAction(campaignId, cpId, false), (r) => { if (r.url) window.location.href = r.url; })}>Abrir correo</button>
@@ -89,7 +95,7 @@ export function ProspectRow(props: RowProps) {
             {body.trim() && <div className="mt-2 max-w-md"><WhatsAppPreview text={body} attachments={props.attachments} /></div>}
             {props.aiReady && !locked && <div className="mt-2"><label className="label" htmlFor={`rev-${cpId}`}>Ajuste para la IA (opcional, p. ej. «más corto» o «más formal»)</label>
               <input id={`rev-${cpId}`} className="input" maxLength={300} value={revision} onChange={(e) => setRevision(e.target.value)} /></div>}
-            <p className="mt-1 text-xs text-muted">La IA solo escribe un borrador sin aprobar: nunca incluye precios, descuentos ni promesas que no estén en tu campaña. Guardar o editar retira la aprobación. “Abrir WhatsApp” abre el chat con el texto sin emojis (WhatsApp Web los daña por el enlace); para enviarlo con emojis usa “Copiar mensaje” y pégalo. No envía nada. Luego cambia el estado a “Contactado” cuando lo envíes.</p>
+            <p className="mt-1 text-xs text-muted">La IA solo escribe un borrador sin aprobar: nunca incluye precios, descuentos ni promesas que no estén en tu campaña. Guardar o editar retira la aprobación. “Abrir WhatsApp” abre el chat; si el mensaje trae emojis lo deja copiado para que lo pegues (el enlace los daña), y si no, lo escribe solo. No envía nada. Luego cambia el estado a “Contactado” cuando lo envíes.</p>
             {res?.repeatWarning && !/correo/.test(res.repeatWarning) && (
               <p role="alert" className="mt-2 text-sm badge-warn">{res.repeatWarning}{" "}
                 <button className="btn ml-2" disabled={pending} onClick={() => run(() => whatsappAction(campaignId, cpId, true), (r) => { if (r.url) window.open(r.url, "_blank", "noopener,noreferrer"); })}>Sí, abrir de nuevo</button></p>)}
