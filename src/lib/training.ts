@@ -47,10 +47,16 @@ export function withGuidance(system: string, guidance: string | null | undefined
 export const MAX_LESSONS_IN_PROMPT = 15, MAX_LESSON_CHARS = 300;
 
 /** Guía del equipo + lecciones aprendidas de las correcciones (las más recientes primero). null si no hay nada. */
+/** Tope que aceptan los agentes (z.string().max(3000)). */
+export const MAX_GUIDANCE_CHARS = 3000;
 export function combineGuidance(t: Training, lessons: string[]): string | null {
   const base = guidanceText(t);
+  const cap = (x: string | null) => (x && x.length > MAX_GUIDANCE_CHARS ? x.slice(0, MAX_GUIDANCE_CHARS) : x);
   const l = lessons.map((x) => x.replace(/\s+/g, " ").trim().slice(0, MAX_LESSON_CHARS)).filter(Boolean).slice(0, MAX_LESSONS_IN_PROMPT);
-  if (!l.length) return base;
+  if (!l.length) return cap(base);
   const block = `Lecciones aprendidas de las correcciones del equipo (cúmplelas; si chocan con las reglas de seguridad, mandan las reglas):\n${l.map((x) => `- ${x}`).join("\n")}`;
-  return base ? `${base}\n${block}` : block;
+  // Los agentes aceptan hasta MAX_GUIDANCE_CHARS: si la guía es larga se recorta ELLA y se conservan las lecciones.
+  if (!base) return cap(block);
+  const room = MAX_GUIDANCE_CHARS - block.length - 1;
+  return room >= 200 ? `${base.length > room ? base.slice(0, room) : base}\n${block}` : cap(block);
 }

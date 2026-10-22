@@ -110,7 +110,7 @@ describe("correo asistido desde una campaña", () => {
     await expect(openEmail(d, o, cpA, "t")).rejects.toThrow(/aprobar el mensaje/);
     await generateDraft(d, o, cpA); await approveMessage(d, o, cpA, "t");
     const r = await openEmail(d, o, cpA, "t");
-    expect(r.url).toMatch(/^mailto:ventas@concorreo\.co\?subject=Correos&body=Hola%2C%20equipo%20de%20Con%20Correo/);
+    expect(r.url).toMatch(/^mailto:ventas@concorreo\.co\?subject=Correos&body=%C2%A1Hola%2C%20equipo%20de%20Con%20Correo/);
     expect((await openEmail(d, o, cpA, "t")).repeatWarning).toMatch(/Ya abriste el correo/);       // dentro de 24 h pide confirmación
     const [p] = await d.select().from(prospects).where(eq(prospects.id, a.prospectId));
     expect(p).toMatchObject({ contactAttempts: 1, contactOutcome: "contacted" });

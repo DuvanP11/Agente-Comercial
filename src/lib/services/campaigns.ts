@@ -3,7 +3,7 @@ import { z } from "zod";
 import { normalizePhone } from "../dedup/normalize";
 import { mailtoLink, whatsappLink } from "../contact-links";
 import {
-  approvalBlockers, CLOSED_STATUSES, CP_STATUS_KEYS, followUpFromDate, followUpState, funnel, renderTemplate,
+  approvalBlockers, CLOSED_STATUSES, CP_STATUS_KEYS, followUpFromDate, effectiveTemplate, followUpState, funnel, renderTemplate,
   type CpStatus,
 } from "../campaigns";
 import type { Db } from "../db/client";
@@ -168,7 +168,7 @@ export async function saveDraft(db: Db, orgId: string, cpId: string, body: strin
 
 export async function generateDraft(db: Db, orgId: string, cpId: string) {
   const { p, c } = await loadCp(db, orgId, cpId);
-  const r = renderTemplate(c.template, { empresa: p.name, ciudad: p.city, categoria: p.category });
+  const r = renderTemplate(effectiveTemplate(c.template), { empresa: p.name, ciudad: p.city, categoria: p.category });
   await saveDraft(db, orgId, cpId, r.text);
   return r;
 }

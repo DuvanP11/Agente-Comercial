@@ -16,7 +16,7 @@ import { listAttachments } from "@/lib/services/campaign-media";
 import { EmailSender } from "./EmailSender";
 import { dailyCap, getConnection, sendableRecipients, sentToday } from "@/lib/services/gmail";
 import { oauthConfig } from "@/lib/google-oauth";
-import { renderTemplate } from "@/lib/campaigns";
+import { effectiveTemplate, renderTemplate } from "@/lib/campaigns";
 import { AttachmentsPanel } from "./AttachmentsPanel";
 import { CampaignEditor } from "./CampaignEditor";
 import { CoverUploader } from "./CoverUploader";
@@ -93,6 +93,7 @@ export default async function CampaignPage({ params }: { params: Promise<{ id: s
             <ProspectRow key={i.cp.id} campaignId={id} cpId={i.cp.id} closed={closed}
               p={{ id: i.p.id, name: i.p.name, phone: i.p.phone, email: i.p.email, city: i.p.city, doNotContact: i.p.doNotContact }}
               status={i.cp.status} followUpDate={bogotaDate(i.cp.nextFollowUpAt)} notes={i.cp.notes ?? ""} followUp={i.followUp}
+              suggested={renderTemplate(effectiveTemplate(c.template), { empresa: i.p.name, ciudad: i.p.city, categoria: i.p.category }).text}
               message={i.message ? { body: i.message.body, status: i.message.status } : null} opens={i.opens} aiReady={ai} attachments={attachments} gmailConnected={!!conn} />))}
       </section>
 

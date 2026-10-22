@@ -13,7 +13,7 @@ export interface RowProps {
   campaignId: string; cpId: string; closed: boolean;
   p: { id: string; name: string; phone: string | null; email?: string | null; city: string | null; doNotContact: boolean };
   status: string; followUpDate: string; notes: string; followUp: string;
-  message: { body: string; status: string } | null; opens: number; aiReady?: boolean; attachments?: Att[]; gmailConnected?: boolean;
+  message: { body: string; status: string } | null; opens: number; aiReady?: boolean; attachments?: Att[]; gmailConnected?: boolean; suggested?: string;
 }
 const FU: Record<string, [string, string]> = { overdue: ["Seguimiento vencido", "badge-bad"], today: ["Seguimiento hoy", "badge-warn"], upcoming: ["Seguimiento próximo", ""] };
 
@@ -23,7 +23,7 @@ export function ProspectRow(props: RowProps) {
   const [status, setStatus] = useState(props.status);
   const [date, setDate] = useState(props.followUpDate);
   const [notes, setNotes] = useState(props.notes);
-  const [body, setBody] = useState(props.message?.body ?? "");
+  const [body, setBody] = useState(props.message?.body ?? props.suggested ?? "");
   const [msgStatus, setMsgStatus] = useState(props.message?.status ?? "none");
   const [revision, setRevision] = useState("");
   const [withFiles, setWithFiles] = useState(false);

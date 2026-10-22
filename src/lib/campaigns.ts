@@ -21,7 +21,11 @@ export const TEMPLATE_VARS = ["empresa", "ciudad", "categoria"] as const;
 export type TemplateVar = (typeof TEMPLATE_VARS)[number];
 
 export const DEFAULT_TEMPLATE =
+  "¡Hola, equipo de {empresa}! 👋 Les escribimos de PIBOX Mensajería. Ayudamos a negocios de {ciudad} a que sus entregas lleguen rápido y sin dolores de cabeza. Nos encantaría conocer cómo manejan hoy sus envíos y ver en qué podemos darles una mano. ¿Con quién podríamos hablar? ¡Gracias por su tiempo! 🚀";
+/** Plantilla anterior: las campañas que la conservan usan la nueva al sugerir mensajes. */
+export const LEGACY_TEMPLATE =
   "Hola, equipo de {empresa}. Somos PIBOX Mensajería y trabajamos con negocios de {ciudad}. Nos gustaría conocer cómo gestionan hoy sus entregas y ver si podemos ayudarles. ¿Con quién podríamos hablar?";
+export const effectiveTemplate = (t: string) => (!t.trim() || t.trim() === LEGACY_TEMPLATE ? DEFAULT_TEMPLATE : t);
 
 export interface RenderResult {
   text: string;
