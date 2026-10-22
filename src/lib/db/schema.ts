@@ -333,3 +333,38 @@ export const activityLog = pgTable("activity_log", {
   userAgent: text("user_agent"),
   createdAt: ts("created_at"),
 }, (t) => [index("activity_log_at_idx").on(t.createdAt), index("activity_log_user_idx").on(t.userId), index("activity_log_kind_idx").on(t.kind)]);
+
+/** Laboratorio de conversación: pruebas del agente con una persona del equipo que hace de cliente potencial. */
+export const simConversations = pgTable("sim_conversations", {
+  id: id(),
+  orgId: text("org_id").notNull().references(() => organizations.id),
+  userId: text("user_id").notNull(),
+  userName: text("user_name"),
+  scenario: jsonb("scenario").notNull(),
+  createdAt: ts("created_at"),
+});
+
+export const simMessages = pgTable("sim_messages", {
+  id: id(),
+  conversationId: text("conversation_id").notNull().references(() => simConversations.id),
+  /** agent | prospect */
+  role: text("role").notNull(),
+  text: text("text").notNull(),
+  /** Lo que dijo el agente antes de reescribirlo con una corrección. */
+  originalText: text("original_text"),
+  stage: text("stage"),
+  /** Solo agente: pending (sin revisar) | ok (está bien) | corrected (se corrigió) */
+  status: text("status").notNull().default("pending"),
+  createdAt: ts("created_at"),
+}, (t) => [index("sim_messages_conv_idx").on(t.conversationId)]);
+
+/** Lecciones que el equipo le enseña al agente al corregirlo. Las activas se añaden a las instrucciones de todos los agentes de redacción y conversación. */
+export const trainingLessons = pgTable("training_lessons", {
+  id: id(),
+  orgId: text("org_id").notNull().references(() => organizations.id),
+  text: text("text").notNull(),
+  context: jsonb("context"),
+  active: boolean("active").notNull().default(true),
+  createdBy: text("created_by"),
+  createdAt: ts("created_at"),
+});

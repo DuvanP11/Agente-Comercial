@@ -1,9 +1,9 @@
-import { eq } from "drizzle-orm";
+import { and, desc, eq } from "drizzle-orm";
 import { z } from "zod";
 import type { Db } from "../db/client";
 import { DEFAULT_RULES, parseRules, type ContactRules } from "../contact-tracking";
-import { guidanceText, parseTraining, type Training } from "../training";
-import { auditLog, orgSettings, prospects } from "../db/schema";
+import { combineGuidance, parseTraining, guidanceText, type Training } from "../training";
+import { auditLog, orgSettings, prospects, trainingLessons } from "../db/schema";
 import { CRITERION_LABELS, DEFAULT_WEIGHTS, MIN_COVERAGE, scoreProspect, type CriterionAssessment, type CriterionKey } from "../scoring/score";
 
 export interface ScoringConfig { weights: Record<CriterionKey, number>; minCoverage: number }
@@ -81,7 +81,8 @@ export async function saveTraining(db: Db, orgId: string, input: unknown, actor:
 
 /** Texto que se añade a las instrucciones de los agentes (o null si el equipo no ha escrito nada). */
 export async function getGuidance(db: Db, orgId: string): Promise<string | null> {
-  return guidanceText(await getTraining(db, orgId));
+  const lessons = await db.select({ text: trainingLessons.text }).from(trainingLessons).where(and(eq(trainingLessons.orgId, orgId), eq(trainingLessons.active, true))).orderBy(desc(trainingLessons.createdAt)).limit(20);
+  return combineGuidance(await getTraining(db, orgId), lessons.map((l) => l.text));
 }
 
 // ---------------------------------------------------------------------------------------------

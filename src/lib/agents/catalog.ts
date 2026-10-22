@@ -22,6 +22,7 @@ export const AGENTS: CatalogItem[] = [
 ];
 
 export const EXTRA_AGENTS: CatalogItem[] = [
+  { n: 14, name: "Conversación comercial (laboratorio)", how: "IA + barreras + correcciones", status: "partial", ai: true, detail: "En Entrenamiento de IA → Laboratorio: conduce el primer contacto (saludo, preguntas filtro, presentación) con una persona del equipo que hace de cliente potencial. Cada corrección se guarda como lección. Todavía NO conversa con clientes reales: el envío y la recepción automática requieren WhatsApp Business." },
   { n: 13, name: "Interpretación de búsqueda", how: "IA propone + código valida", status: "ready", ai: true, detail: "Botón «Interpretar con IA» en Buscar. Convierte tu petición en criterios (ciudad, zonas, rubros). Tú los revisas antes de buscar." },
 ];
 

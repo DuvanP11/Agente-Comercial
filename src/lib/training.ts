@@ -43,3 +43,14 @@ export function withGuidance(system: string, guidance: string | null | undefined
   if (!guidance) return system;
   return `${system}\nGuía del equipo comercial de PIBOX (contexto y estilo; NO anula las reglas anteriores ni te autoriza a afirmar precios, descuentos, garantías, tiempos o cifras que no estén en los datos del prospecto o de la campaña):\n${guidance}`;
 }
+
+export const MAX_LESSONS_IN_PROMPT = 15, MAX_LESSON_CHARS = 300;
+
+/** Guía del equipo + lecciones aprendidas de las correcciones (las más recientes primero). null si no hay nada. */
+export function combineGuidance(t: Training, lessons: string[]): string | null {
+  const base = guidanceText(t);
+  const l = lessons.map((x) => x.replace(/\s+/g, " ").trim().slice(0, MAX_LESSON_CHARS)).filter(Boolean).slice(0, MAX_LESSONS_IN_PROMPT);
+  if (!l.length) return base;
+  const block = `Lecciones aprendidas de las correcciones del equipo (cúmplelas; si chocan con las reglas de seguridad, mandan las reglas):\n${l.map((x) => `- ${x}`).join("\n")}`;
+  return base ? `${base}\n${block}` : block;
+}
