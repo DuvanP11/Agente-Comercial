@@ -17,6 +17,13 @@ export interface RowProps {
 }
 const FU: Record<string, [string, string]> = { overdue: ["Seguimiento vencido", "badge-bad"], today: ["Seguimiento hoy", "badge-warn"], upcoming: ["Seguimiento próximo", ""] };
 
+/** Copia al portapapeles; si la API moderna no está o falla, usa el método antiguo. Llamar siempre dentro de un clic. */
+function copyText(text: string): Promise<boolean> {
+  const legacy = () => { try { const t = document.createElement("textarea"); t.value = text; t.style.position = "fixed"; t.style.opacity = "0"; document.body.appendChild(t); t.select(); const ok = document.execCommand("copy"); t.remove(); return ok; } catch { return false; } };
+  if (!navigator.clipboard) return Promise.resolve(legacy());
+  return navigator.clipboard.writeText(text).then(() => true, () => legacy());
+}
+
 export function ProspectRow(props: RowProps) {
   const { campaignId, cpId, p } = props;
   const [open, setOpen] = useState(false);
@@ -65,14 +72,18 @@ export function ProspectRow(props: RowProps) {
               <button className="btn" disabled={locked || pending || !body.trim()} onClick={() => run(() => draftAction(campaignId, cpId, body), (r) => { if (!r.error) setMsgStatus("draft"); })}>Guardar borrador</button>
               <button className="btn" disabled={locked || pending || msgStatus !== "draft"} onClick={() => run(() => approveAction(campaignId, cpId), (r) => { if (!r.error) setMsgStatus("approved"); })}>Aprobar mensaje</button>
               <button className="btn btn-primary" disabled={locked || pending || msgStatus !== "approved" || !p.phone}
-                onClick={() => run(() => whatsappAction(campaignId, cpId, false), (r) => {
-                  if (!r.url) return;
-                  // Con emojis: el enlace no los transporta bien, así que se abre el chat vacío y el mensaje completo queda copiado para pegarlo.
-                  if (/\p{Extended_Pictographic}/u.test(body) && navigator.clipboard) {
-                    void navigator.clipboard.writeText(body).then(() => { setRes({ ok: "Mensaje copiado con sus emojis: en el chat de WhatsApp pégalo con Cmd+V (Ctrl+V en Windows) y envía." }); window.open(r.url!.split("?")[0], "_blank", "noopener,noreferrer"); }, () => window.open(r.url, "_blank", "noopener,noreferrer"));
-                  } else window.open(r.url, "_blank", "noopener,noreferrer");
-                })}>Abrir WhatsApp</button>
-              <button className="btn" disabled={!body.trim()} title="Copia el mensaje completo, con emojis, para pegarlo en el chat" onClick={() => { void navigator.clipboard?.writeText(body).then(() => setRes({ ok: "Mensaje copiado: pégalo en el chat de WhatsApp." }), () => setRes({ error: "No se pudo copiar; selecciona el texto y cópialo a mano." })); }}>Copiar mensaje</button>
+                onClick={() => {
+                  // La copia se inicia AQUÍ, dentro del clic: tras esperar al servidor el navegador ya no la permite.
+                  const emoji = /\p{Extended_Pictographic}/u.test(body);
+                  const copied = emoji ? copyText(body) : Promise.resolve(false);
+                  run(() => whatsappAction(campaignId, cpId, false), async (r) => {
+                    if (!r.url) return;
+                    if (!emoji) { window.open(r.url, "_blank", "noopener,noreferrer"); return; }
+                    if (await copied) { setRes({ ok: "Mensaje copiado con sus emojis: en el chat de WhatsApp pégalo con Cmd+V (Ctrl+V en Windows) y envía." }); window.open(r.url.split("?")[0], "_blank", "noopener,noreferrer"); }
+                    else { setRes({ error: "El navegador no dejó copiar el mensaje. Pulsa «Copiar mensaje» y pégalo en el chat." }); window.open(r.url.split("?")[0], "_blank", "noopener,noreferrer"); }
+                  });
+                }}>Abrir WhatsApp</button>
+              <button className="btn" disabled={!body.trim()} title="Copia el mensaje completo, con emojis, para pegarlo en el chat" onClick={() => { void copyText(body).then((ok) => setRes(ok ? { ok: "Mensaje copiado: pégalo en el chat de WhatsApp." } : { error: "No se pudo copiar; selecciona el texto y cópialo a mano." })); }}>Copiar mensaje</button>
               <button className="btn" disabled={locked || pending || msgStatus !== "approved" || !p.email} title={p.email ? "Abre tu programa de correo con el mensaje ya escrito" : "El prospecto no tiene correo: complétalo en su ficha"}
                 onClick={() => run(() => emailAction(campaignId, cpId, false), (r) => { if (r.url) window.location.href = r.url; })}>Abrir correo</button>
               {props.gmailConnected && (
