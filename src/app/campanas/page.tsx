@@ -81,6 +81,7 @@ export default async function Campanas() {
                   <div className="h-2 overflow-hidden rounded-full" style={{ background: "var(--color-surface-2)" }} title={`${n.contacted} de ${n.total} contactados`}><div className="h-2 rounded-full" style={{ width: `${n.contactRate}%`, background: "var(--s3)" }} /></div>
                   <p className="text-xs text-muted">{n.total} prospectos · {n.contacted} contactados · {n.replied} respondieron · {n.won} ganados</p>
                   <p className="text-xs">{campaignInsight(n)}</p>
+                  {c.coverLen === 0 && <p className="text-xs text-muted">Sin portada: ábrela para subir una imagen.</p>}
                 </div>
               </Link>);
           })}</div>)}

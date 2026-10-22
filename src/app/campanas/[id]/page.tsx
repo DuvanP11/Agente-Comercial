@@ -13,6 +13,7 @@ import { campaignFunnel, campaignInsight, campaignNumbers } from "@/lib/campaign
 import { listAttachments } from "@/lib/services/campaign-media";
 import { AttachmentsPanel } from "./AttachmentsPanel";
 import { CampaignEditor } from "./CampaignEditor";
+import { CoverUploader } from "./CoverUploader";
 import { AddProspects } from "./AddProspects";
 import { ProspectRow } from "./ProspectRow";
 
@@ -48,6 +49,8 @@ export default async function CampaignPage({ params }: { params: Promise<{ id: s
         </div>
       </header>
 
+      <CoverUploader campaignId={id} hasCover={coverLen > 0} coverLen={coverLen} closed={closed} />
+
       <section className="grid grid-cols-2 gap-3 lg:grid-cols-5" aria-label="Resumen">
         {[["Prospectos", n.total, "En esta campaña", "var(--s1)"], ["Contactados", n.contacted, `${n.contactRate} % de los prospectos`, "var(--s2)"], ["Respondieron", n.replied, `${n.replyRate} % de los contactados`, "var(--s3)"], ["Reuniones", n.meetings, "Agendadas o más avanzadas", "var(--s4)"], ["Ganados", n.won, `${n.winRate} % de los contactados`, "var(--s5)"]].map(([l, v, note, col]) => (
           <div key={String(l)} className="card kpi" style={{ ["--kpi" as string]: String(col) }}><div className="text-xs text-muted">{l}</div><div className="mt-1 text-2xl font-bold">{v}</div><div className="mt-1 text-xs text-muted">{note}</div></div>
@@ -67,7 +70,7 @@ export default async function CampaignPage({ params }: { params: Promise<{ id: s
 
       <AttachmentsPanel campaignId={id} items={attachments} closed={closed} />
 
-      {!closed && <details className="card"><summary className="cursor-pointer font-semibold">Editar campaña y portada</summary><div className="mt-3"><CampaignEditor campaignId={id} hasCover={coverLen > 0} initial={{ name: c.name, objective: c.objective ?? "", valueProposition: c.valueProposition ?? "", template: c.template }} /></div></details>}
+      {!closed && <details className="card"><summary className="cursor-pointer font-semibold">Editar textos de la campaña</summary><div className="mt-3"><CampaignEditor campaignId={id} initial={{ name: c.name, objective: c.objective ?? "", valueProposition: c.valueProposition ?? "", template: c.template }} /></div></details>}
 
       {!closed && <section aria-labelledby="add"><h2 id="add" className="mb-2 font-semibold">Agregar prospectos</h2><AddProspects campaignId={id} options={options} /></section>}
 
