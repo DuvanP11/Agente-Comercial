@@ -2,13 +2,13 @@
 import { revalidatePath } from "next/cache";
 import { ensureDefaultOrg, getDb } from "@/lib/db/client";
 import { createUser, resetPassword, updateUser } from "@/lib/services/users";
-import { requireAdmin } from "@/lib/session";
+import { requireManager } from "@/lib/session";
 
 export interface UserActionResult { ok?: string; error?: string; tempPassword?: string; who?: string }
 const fail = (e: unknown): UserActionResult => ({ error: e instanceof Error ? e.message : "Ocurrió un error." });
 
-export async function createUserAction(input: { name: string; email: string; username: string }): Promise<UserActionResult> {
-  const admin = await requireAdmin();
+export async function createUserAction(input: { name: string; email: string; username: string; role: string }): Promise<UserActionResult> {
+  const admin = await requireManager();
   try {
     const db = await getDb();
     const r = await createUser(db, await ensureDefaultOrg(db), admin.id, input);
@@ -17,18 +17,18 @@ export async function createUserAction(input: { name: string; email: string; use
   } catch (e) { return fail(e); }
 }
 
-export async function updateUserAction(id: string, input: { name?: string; email?: string; username?: string; active?: boolean }): Promise<UserActionResult> {
-  const admin = await requireAdmin();
+export async function updateUserAction(id: string, input: { name?: string; email?: string; username?: string; active?: boolean; role?: string }): Promise<UserActionResult> {
+  const admin = await requireManager();
   try {
     const db = await getDb();
     await updateUser(db, await ensureDefaultOrg(db), admin.id, id, input);
     revalidatePath("/usuarios");
-    return { ok: input.active === undefined ? "Cambios guardados." : input.active ? "Usuario activado." : "Usuario desactivado: sus sesiones se cerraron." };
+    return { ok: input.role !== undefined && input.active === undefined && input.name === undefined && input.email === undefined && input.username === undefined ? "Rol actualizado: la persona deberá volver a iniciar sesión." : input.active === undefined ? "Cambios guardados." : input.active ? "Usuario activado." : "Usuario desactivado: sus sesiones se cerraron." };
   } catch (e) { return fail(e); }
 }
 
 export async function resetPasswordAction(id: string): Promise<UserActionResult> {
-  const admin = await requireAdmin();
+  const admin = await requireManager();
   try {
     const db = await getDb();
     const r = await resetPassword(db, await ensureDefaultOrg(db), admin.id, id);

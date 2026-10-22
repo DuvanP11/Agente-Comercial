@@ -1,4 +1,5 @@
 "use server";
+import { requireNotHunter } from "@/lib/session";
 import { revalidatePath } from "next/cache";
 import { ensureDefaultOrg, getDb } from "@/lib/db/client";
 import { resetScoringConfig, saveContactRules, saveScoringConfig } from "@/lib/services/settings";
@@ -6,6 +7,7 @@ import { resetScoringConfig, saveContactRules, saveScoringConfig } from "@/lib/s
 export interface ConfigState { ok?: string; error?: string }
 
 export async function saveScoringAction(input: { weights: Record<string, number>; minCoverage: number }): Promise<ConfigState> {
+  await requireNotHunter(); // el Hunter no usa este módulo
   try {
     const db = await getDb();
     const r = await saveScoringConfig(db, await ensureDefaultOrg(db), input, "usuario");
@@ -15,6 +17,7 @@ export async function saveScoringAction(input: { weights: Record<string, number>
 }
 
 export async function resetScoringAction(): Promise<ConfigState> {
+  await requireNotHunter(); // el Hunter no usa este módulo
   try {
     const db = await getDb();
     const r = await resetScoringConfig(db, await ensureDefaultOrg(db), "usuario");
@@ -24,6 +27,7 @@ export async function resetScoringAction(): Promise<ConfigState> {
 }
 
 export async function saveContactRulesAction(maxAttempts: number): Promise<ConfigState> {
+  await requireNotHunter(); // el Hunter no usa este módulo
   try {
     const db = await getDb();
     const r = await saveContactRules(db, await ensureDefaultOrg(db), { maxAttempts }, "usuario");

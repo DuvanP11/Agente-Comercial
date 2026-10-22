@@ -1,6 +1,7 @@
 "use server";
 import { redirect } from "next/navigation";
 import { ensureDefaultOrg, getDb } from "@/lib/db/client";
+import { homeFor } from "@/lib/permissions";
 import { changeOwnPassword, updateOwnName } from "@/lib/services/users";
 import { endSession, requireUser, startSession } from "@/lib/session";
 
@@ -21,7 +22,7 @@ export async function changePasswordAction(_: AccountState, fd: FormData): Promi
     const u = await changeOwnPassword(db, await ensureDefaultOrg(db), me.id, String(fd.get("current") ?? ""), next);
     await startSession(u); // sesión nueva: la versión cambió y las demás sesiones quedan cerradas
   } catch (e) { return { error: e instanceof Error ? e.message : "No se pudo cambiar la contraseña." }; }
-  redirect("/?clave=cambiada");
+  redirect(`${homeFor("hunter")}?clave=cambiada`);
 }
 
 export async function logoutAction() { await endSession(); redirect("/login"); }

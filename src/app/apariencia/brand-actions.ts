@@ -1,4 +1,5 @@
 "use server";
+import { requireNotHunter } from "@/lib/session";
 import { revalidatePath } from "next/cache";
 import { ensureDefaultOrg, getDb } from "@/lib/db/client";
 import { isKind } from "@/lib/brand";
@@ -7,6 +8,7 @@ import { removeBrandAsset, saveBrandAsset, setBrandTint } from "@/lib/services/b
 export interface BrandState { ok?: string; error?: string }
 
 export async function saveBrandAction(kind: string, dataUrl: string): Promise<BrandState> {
+  await requireNotHunter(); // el Hunter no usa este módulo
   try {
     if (!isKind(kind)) return { error: "Tipo de imagen no válido." };
     const db = await getDb();
@@ -17,6 +19,7 @@ export async function saveBrandAction(kind: string, dataUrl: string): Promise<Br
 }
 
 export async function removeBrandAction(kind: string): Promise<BrandState> {
+  await requireNotHunter(); // el Hunter no usa este módulo
   try {
     if (!isKind(kind)) return { error: "Tipo de imagen no válido." };
     const db = await getDb();
@@ -27,6 +30,7 @@ export async function removeBrandAction(kind: string): Promise<BrandState> {
 }
 
 export async function setTintAction(kind: string, tint: boolean): Promise<BrandState> {
+  await requireNotHunter(); // el Hunter no usa este módulo
   try {
     if (!isKind(kind)) return { error: "Tipo de imagen no válido." };
     const db = await getDb();

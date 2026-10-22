@@ -10,6 +10,7 @@ export interface SessionPayload {
   /** versión de sesión del usuario */ v: number;
   /** expira (epoch s) */ e: number;
   /** debe cambiar la contraseña */ m: boolean;
+  /** rol (si cambia, sube la versión de sesión y hay que volver a entrar) */ r: string;
 }
 
 const enc = new TextEncoder();
@@ -41,8 +42,8 @@ export async function readSession(token: string | undefined, now = Date.now()): 
   if (!safeEqual(sig, await hmac(process.env.AUTH_SECRET!, `session:${body}`))) return null;
   try {
     const p = JSON.parse(unb64(body)) as SessionPayload;
-    if (typeof p.u !== "string" || typeof p.v !== "number" || typeof p.e !== "number" || p.e * 1000 < now) return null;
-    return { u: p.u, v: p.v, e: p.e, m: !!p.m };
+    if (typeof p.u !== "string" || typeof p.v !== "number" || typeof p.e !== "number" || typeof p.r !== "string" || p.e * 1000 < now) return null;
+    return { u: p.u, v: p.v, e: p.e, m: !!p.m, r: p.r };
   } catch { return null; }
 }
 

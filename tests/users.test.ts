@@ -39,11 +39,11 @@ describe("reglas de usuarios", () => {
 
 describe("sesión firmada", () => {
   it("lee un token válido; rechaza manipulado, vencido y sin secreto", async () => {
-    const t = await makeSessionToken({ u: "u1", v: 3, m: false }, 1_000_000);
-    expect(await readSession(t, 1_000_000)).toMatchObject({ u: "u1", v: 3, m: false });
+    const t = await makeSessionToken({ u: "u1", v: 3, m: false, r: "hunter" }, 1_000_000);
+    expect(await readSession(t, 1_000_000)).toMatchObject({ u: "u1", v: 3, m: false, r: "hunter" });
     const [body, sig] = t.split(".");
     expect(await readSession(`${body}.${sig.replace(/.$/, sig.endsWith("0") ? "1" : "0")}`, 1_000_000)).toBeNull();
-    const forged = btoa(JSON.stringify({ u: "admin", v: 0, e: 9_999_999_999, m: false })).replace(/=+$/, "");
+    const forged = btoa(JSON.stringify({ u: "admin", v: 0, e: 9_999_999_999, m: false, r: "admin" })).replace(/=+$/, "");
     expect(await readSession(`${forged}.${sig}`, 1_000_000)).toBeNull();
     expect(await readSession(t, 1_000_000 + 13 * 3600_000)).toBeNull();
     expect(await readSession(undefined)).toBeNull(); expect(await readSession("basura")).toBeNull();
@@ -64,10 +64,10 @@ describe("administración de usuarios", () => {
     const { d, o, admin } = await setup();
     await expect(createUser(d, o, admin.id, { name: "Ana", email: "ana@gmail.com" })).rejects.toThrow(/correos corporativos/);
     const { user, tempPassword: temp } = await createUser(d, o, admin.id, { name: "Ana Pérez", email: "Ana.Perez@picap.io" });
-    expect(user).toMatchObject({ email: "ana.perez@picap.io", username: "ana.perez", role: "user", mustChangePassword: true, active: true });
+    expect(user).toMatchObject({ email: "ana.perez@picap.io", username: "ana.perez", role: "hunter", mustChangePassword: true, active: true });
     expect("passwordHash" in user).toBe(false);
-    await expect(createUser(d, o, user.id, { name: "Luis", email: "luis@pibox.app" })).rejects.toThrow(/Solo el administrador/);     // un usuario normal no crea
-    await expect(createUser(d, o, "no-existe", { name: "Luis", email: "luis@pibox.app" })).rejects.toThrow(/Solo el administrador/);
+    await expect(createUser(d, o, user.id, { name: "Luis", email: "luis@pibox.app" })).rejects.toThrow(/Solo Admin, Gerencia o Head/);     // un usuario normal no crea
+    await expect(createUser(d, o, "no-existe", { name: "Luis", email: "luis@pibox.app" })).rejects.toThrow(/Solo Admin, Gerencia o Head/);
     await expect(createUser(d, o, admin.id, { name: "Otra Ana", email: "ana.perez@picap.io" })).rejects.toThrow(/ese correo/);
     await expect(createUser(d, o, admin.id, { name: "Otra Ana", email: "otra@picap.io", username: "ana.perez" })).rejects.toThrow(/nombre de usuario/);
     await expect(createUser(d, o, admin.id, { name: "Falso", email: "falso@picap.io", username: "admin" })).rejects.toThrow(/reservado/);
@@ -95,15 +95,15 @@ describe("administración de usuarios", () => {
     expect(changed).toMatchObject({ mustChangePassword: false, sessionVersion: 1 });
     expect(await userForSession(d, o, user.id, 0)).toBeNull(); expect(await userForSession(d, o, user.id, 1)).not.toBeNull();
     expect((await authenticate(d, o, "ana", temp)).ok).toBe(false); expect((await authenticate(d, o, "ana", "Nueva-clave-2026")).ok).toBe(true);
-    await expect(changeOwnPassword(d, o, admin.id, ENV.APP_PASSWORD, "Nueva-clave-2026")).rejects.toThrow(/APP_PASSWORD/);   // el admin la cambia en Vercel
+    await expect(changeOwnPassword(d, o, admin.id, ENV.APP_PASSWORD, "Nueva-clave-2026")).rejects.toThrow(/APP_PASSWORD|Mi cuenta/);   // el admin la cambia en Vercel
   });
   it("restablecer: solo el administrador, contraseña temporal nueva, sesiones cerradas, solicitud atendida", async () => {
     const { d, o, admin } = await setup();
     const { user } = await createUser(d, o, admin.id, { name: "Ana Pérez", email: "ana@pibox.app" });
     await requestReset(d, o, "ANA"); await requestReset(d, o, "no-existe");
     expect((await d.select().from(users).where(eq(users.id, user.id)))[0].resetRequestedAt).not.toBeNull();
-    await expect(resetPassword(d, o, user.id, user.id)).rejects.toThrow(/Solo el administrador/);          // ni ella misma
-    await expect(resetPassword(d, o, admin.id, admin.id)).rejects.toThrow(/APP_PASSWORD/);
+    await expect(resetPassword(d, o, user.id, user.id)).rejects.toThrow(/Solo Admin, Gerencia o Head/);          // ni ella misma
+    await expect(resetPassword(d, o, admin.id, admin.id)).rejects.toThrow(/APP_PASSWORD|Mi cuenta/);
     const r = await resetPassword(d, o, admin.id, user.id);
     expect(r.user).toMatchObject({ mustChangePassword: true, sessionVersion: 1, resetRequestedAt: null });
     expect((await authenticate(d, o, "ana", r.tempPassword)).ok).toBe(true);
@@ -117,7 +117,7 @@ describe("administración de usuarios", () => {
     await expect(updateUser(d, o, admin.id, user.id, { email: "ana@hotmail.com" })).rejects.toThrow(/corporativos/);
     await expect(updateUser(d, o, admin.id, user.id, { email: other.email })).rejects.toThrow(/ese correo/);
     await expect(updateUser(d, o, admin.id, user.id, { username: other.username })).rejects.toThrow(/nombre de usuario/);
-    await expect(updateUser(d, o, user.id, other.id, { name: "Hackeado" })).rejects.toThrow(/Solo el administrador/);
+    await expect(updateUser(d, o, user.id, other.id, { name: "Hackeado" })).rejects.toThrow(/Solo Admin, Gerencia o Head/);
     await expect(updateUser(d, o, admin.id, admin.id, { active: false })).rejects.toThrow(/no se puede desactivar/);
     const off = await updateUser(d, o, admin.id, user.id, { active: false });
     expect(off).toMatchObject({ active: false, sessionVersion: 1 });

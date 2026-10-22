@@ -1,5 +1,6 @@
 import { NextResponse, type NextRequest } from "next/server";
 import { authConfigured, readSession, SESSION_COOKIE } from "@/lib/auth";
+import { canAccessPath, fallbackFor } from "@/lib/permissions";
 
 export async function middleware(req: NextRequest) {
   const { pathname } = req.nextUrl;
@@ -18,6 +19,12 @@ export async function middleware(req: NextRequest) {
     // Quien debe cambiar su contraseña temporal solo puede ver su cuenta.
     if (session.m && !pathname.startsWith("/cuenta") && !pathname.startsWith("/brand/")) {
       const url = req.nextUrl.clone(); url.pathname = "/cuenta"; url.search = "?cambio=obligatorio";
+      return NextResponse.redirect(url);
+    }
+    // Cada rol solo abre sus rutas (el Hunter: Prospección, Comercial y Reportes).
+    if (!canAccessPath(session.r, pathname)) {
+      if (pathname.startsWith("/api/")) return NextResponse.json({ error: "Sin permiso." }, { status: 403 });
+      const url = req.nextUrl.clone(); url.pathname = fallbackFor(session.r); url.search = "";
       return NextResponse.redirect(url);
     }
     return NextResponse.next();

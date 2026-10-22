@@ -2,6 +2,7 @@ import type { Metadata } from "next";
 import "./globals.css";
 import { AppShell } from "@/components/AppShell";
 import { NAV } from "@/lib/nav";
+import { canSeeNavItem, homeFor } from "@/lib/permissions";
 import { getCurrentUser } from "@/lib/session";
 import { logoutAction } from "./cuenta/actions";
 import { BrandLogo } from "@/components/BrandLogo";
@@ -31,7 +32,7 @@ export default async function RootLayout({ children }: { children: React.ReactNo
       <head><style dangerouslySetInnerHTML={{ __html: themeCss(theme) }} /></head>
       <body>
         {user ? (
-          <AppShell items={NAV.filter((n) => !n.adminOnly || user.role === "admin")} user={{ name: user.name, email: user.email, role: user.role }} logout={logoutAction}
+          <AppShell items={NAV.filter((n) => canSeeNavItem(user.role, n))} user={{ name: user.name, email: user.email, role: user.role }} home={homeFor(user.role)} logout={logoutAction}
             brand={<div><BrandLogo version={b.version} tint={b.tint} height={30} /><div className="mt-1 text-xs text-muted">Commercial Intelligence</div></div>}>
             {children}
           </AppShell>

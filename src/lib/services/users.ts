@@ -1,8 +1,9 @@
-import { and, eq, or, sql } from "drizzle-orm";
+import { and, eq, isNull, isNotNull, or, sql } from "drizzle-orm";
 import { randomBytes, scrypt, timingSafeEqual } from "node:crypto";
 import type { Db } from "../db/client";
 import { auditLog, users } from "../db/schema";
 import { appPasswordMatches } from "../auth";
+import { canManageUsers, isHunter, isRole, ROLES, type Role } from "../permissions";
 import { LOCK_MINUTES, MAX_FAILED, normEmail, normUsername, passwordIssue, tempPassword, validateCorporateEmail, validateName, validateUsername } from "../user-rules";
 
 export type User = typeof users.$inferSelect;
@@ -28,15 +29,32 @@ export async function verifyPassword(pw: string, stored: string | null): Promise
 /** Identificador del administrador de arranque: ADMIN_EMAIL (si se definió) o «admin». Entra con APP_PASSWORD. */
 export const adminIdentifier = () => normEmail(process.env.ADMIN_EMAIL ?? "") || "admin";
 
-async function assertAdmin(db: Db, orgId: string, actorId: string): Promise<User> {
+/** El administrador de arranque (entra con APP_PASSWORD): no tiene contraseña guardada y no se puede desactivar, degradar ni restablecer. */
+export const isBootstrap = (u: Pick<User, "role" | "passwordHash">) => u.role === "admin" && u.passwordHash === null;
+
+/** Solo Admin, Gerencia o Head crean, editan y restablecen. */
+async function assertManager(db: Db, orgId: string, actorId: string): Promise<User> {
   const [a] = await db.select().from(users).where(and(eq(users.id, actorId), eq(users.orgId, orgId)));
-  if (!a || a.role !== "admin" || !a.active) throw new Error("Solo el administrador puede hacer esto.");
+  if (!a || !canManageUsers(a.role) || !a.active) throw new Error("Solo Admin, Gerencia o Head pueden hacer esto.");
   return a;
+}
+
+/** Cualquier rol salvo Hunter puede ver la lista (IT solo la lee). */
+async function assertViewer(db: Db, orgId: string, actorId: string): Promise<User> {
+  const [a] = await db.select().from(users).where(and(eq(users.id, actorId), eq(users.orgId, orgId)));
+  if (!a || isHunter(a.role) || !a.active) throw new Error("No tienes permiso para ver los usuarios.");
+  return a;
+}
+
+/** ¿Quedaría algún otro Admin/Gerencia/Head activo (contando al de arranque)? Evita dejar la plataforma sin quien gestione. */
+async function otherManagers(db: Db, orgId: string, exceptId: string): Promise<number> {
+  const rows = await db.select({ id: users.id, role: users.role }).from(users).where(and(eq(users.orgId, orgId), eq(users.active, true)));
+  return rows.filter((r) => r.id !== exceptId && canManageUsers(r.role)).length;
 }
 
 async function ensureBootstrapAdmin(db: Db, orgId: string): Promise<User> {
   const id = adminIdentifier();
-  const [found] = await db.select().from(users).where(and(eq(users.orgId, orgId), eq(users.role, "admin")));
+  const [found] = await db.select().from(users).where(and(eq(users.orgId, orgId), eq(users.role, "admin"), isNull(users.passwordHash)));
   if (found) return found;
   const [row] = await db.insert(users).values({ orgId, email: id.includes("@") ? id : `${id}@admin.local`, emailKey: id.includes("@") ? id : `${id}@admin.local`, username: id.includes("@") ? id.split("@")[0] : id, usernameKey: id.includes("@") ? id.split("@")[0] : id, name: "Administrador", role: "admin" }).returning();
   return row;
@@ -76,9 +94,9 @@ export async function userForSession(db: Db, orgId: string, id: string, version:
   return u && u.active && u.sessionVersion === version ? u : null;
 }
 
-export async function listUsers(db: Db, orgId: string, actorId: string): Promise<PublicUser[]> {
-  await assertAdmin(db, orgId, actorId);
-  return (await db.select().from(users).where(eq(users.orgId, orgId)).orderBy(users.createdAt)).map(strip);
+export async function listUsers(db: Db, orgId: string, actorId: string): Promise<(PublicUser & { bootstrap: boolean })[]> {
+  await assertViewer(db, orgId, actorId);
+  return (await db.select().from(users).where(eq(users.orgId, orgId)).orderBy(users.createdAt)).map((u) => ({ ...strip(u), bootstrap: isBootstrap(u) }));
 }
 
 async function uniqueCheck(db: Db, orgId: string, emailKey: string, usernameKey: string, exceptId?: string) {
@@ -92,37 +110,50 @@ async function uniqueCheck(db: Db, orgId: string, emailKey: string, usernameKey:
 }
 
 /** Crea un usuario (solo el administrador). Devuelve una contraseña temporal que se muestra UNA vez; el usuario debe cambiarla al entrar. */
-export async function createUser(db: Db, orgId: string, actorId: string, input: { name: string; email: string; username?: string }): Promise<{ user: PublicUser; tempPassword: string }> {
-  await assertAdmin(db, orgId, actorId);
+export async function createUser(db: Db, orgId: string, actorId: string, input: { name: string; email: string; username?: string; role?: string }): Promise<{ user: PublicUser; tempPassword: string }> {
+  await assertManager(db, orgId, actorId);
+  const role: Role = input.role === undefined ? "hunter" : isRole(input.role) ? input.role : (() => { throw new Error("Rol no válido."); })();
   const email = validateCorporateEmail(input.email), name = validateName(input.name);
-  const username = validateUsername(input.username?.trim() ? input.username : email.split("@")[0].replace(/[^a-z0-9._-]/g, ""));
+  const local = email.split("@")[0].replace(/[^a-z0-9._-]/g, "");
+  // Si el usuario escrito antes del @ es muy corto (p. ej. «n1»), se le suma el dominio para cumplir el mínimo de 3 caracteres.
+  const username = validateUsername(input.username?.trim() ? input.username : local.length >= 3 ? local : `${local}.${email.split("@")[1].split(".")[0]}`);
   await uniqueCheck(db, orgId, email, username);
   const temp = tempPassword();
-  const [row] = await db.insert(users).values({ orgId, email, emailKey: email, username, usernameKey: username, name, role: "user", passwordHash: await hashPassword(temp), mustChangePassword: true, createdBy: actorId }).returning();
-  await db.insert(auditLog).values({ orgId, actor: actorId, action: "user.create", entity: row.id, detail: { email } });
+  const [row] = await db.insert(users).values({ orgId, email, emailKey: email, username, usernameKey: username, name, role, passwordHash: await hashPassword(temp), mustChangePassword: true, createdBy: actorId }).returning();
+  await db.insert(auditLog).values({ orgId, actor: actorId, action: "user.create", entity: row.id, detail: { email, role } });
   return { user: strip(row), tempPassword: temp };
 }
 
 /** Edita nombre, correo, usuario y si está activo (solo el administrador). El administrador no se puede desactivar. */
-export async function updateUser(db: Db, orgId: string, actorId: string, id: string, input: { name?: string; email?: string; username?: string; active?: boolean }): Promise<PublicUser> {
-  await assertAdmin(db, orgId, actorId);
+export async function updateUser(db: Db, orgId: string, actorId: string, id: string, input: { name?: string; email?: string; username?: string; active?: boolean; role?: string }): Promise<PublicUser> {
+  await assertManager(db, orgId, actorId);
   const [u] = await db.select().from(users).where(and(eq(users.id, id), eq(users.orgId, orgId)));
   if (!u) throw new Error("Usuario no encontrado.");
   const set: Partial<typeof users.$inferInsert> = {};
   if (input.name !== undefined) set.name = validateName(input.name);
-  const email = input.email !== undefined ? (u.role === "admin" ? normEmail(input.email) : validateCorporateEmail(input.email)) : u.emailKey;
+  const email = input.email !== undefined ? (isBootstrap(u) ? normEmail(input.email) : validateCorporateEmail(input.email)) : u.emailKey;
   const username = input.username !== undefined ? validateUsername(input.username) : u.usernameKey;
   if (input.email !== undefined || input.username !== undefined) {
-    if (u.role === "admin" && input.email !== undefined && !/^[^\s@]+@[^\s@]+\.[^\s@]+$|^admin@admin\.local$/.test(email)) throw new Error("Escribe un correo válido.");
+    if (isBootstrap(u) && input.email !== undefined && !/^[^\s@]+@[^\s@]+\.[^\s@]+$|^admin@admin\.local$/.test(email)) throw new Error("Escribe un correo válido.");
     const rows = await db.select({ id: users.id, e: users.emailKey, u: users.usernameKey }).from(users).where(and(eq(users.orgId, orgId), or(eq(users.emailKey, email), eq(users.usernameKey, username))));
     for (const r of rows) { if (r.id === id) continue; if (r.e === email) throw new Error("Ya existe un usuario con ese correo."); if (r.u === username) throw new Error("Ya existe un usuario con ese nombre de usuario."); }
     if (input.email !== undefined) { set.email = email; set.emailKey = email; }
     if (input.username !== undefined) { set.username = username; set.usernameKey = username; }
   }
   if (input.active !== undefined && input.active !== u.active) {
-    if (u.role === "admin" && !input.active) throw new Error("El administrador no se puede desactivar.");
+    if (isBootstrap(u) && !input.active) throw new Error("El administrador de arranque no se puede desactivar.");
+    if (id === actorId && !input.active) throw new Error("No puedes desactivarte a ti mismo.");
+    if (!input.active && canManageUsers(u.role) && (await otherManagers(db, orgId, id)) === 0) throw new Error("Debe quedar al menos un Admin, Gerencia o Head activo.");
     set.active = input.active;
     if (!input.active) set.sessionVersion = sql`${users.sessionVersion} + 1` as unknown as number; // cierra sus sesiones abiertas
+  }
+  if (input.role !== undefined && input.role !== u.role) {
+    if (!isRole(input.role)) throw new Error("Rol no válido.");
+    if (isBootstrap(u)) throw new Error("El rol del administrador de arranque no se puede cambiar.");
+    if (id === actorId) throw new Error("No puedes cambiar tu propio rol.");
+    if (canManageUsers(u.role) && !canManageUsers(input.role) && (await otherManagers(db, orgId, id)) === 0) throw new Error("Debe quedar al menos un Admin, Gerencia o Head activo.");
+    set.role = input.role;
+    set.sessionVersion = sql`${users.sessionVersion} + 1` as unknown as number; // con el rol nuevo debe volver a entrar
   }
   if (!Object.keys(set).length) return strip(u);
   const [row] = await db.update(users).set(set).where(eq(users.id, id)).returning();
@@ -132,10 +163,11 @@ export async function updateUser(db: Db, orgId: string, actorId: string, id: str
 
 /** Restablece la contraseña (solo el administrador): genera una temporal, cierra las sesiones del usuario y lo obliga a cambiarla. */
 export async function resetPassword(db: Db, orgId: string, actorId: string, id: string): Promise<{ user: PublicUser; tempPassword: string }> {
-  await assertAdmin(db, orgId, actorId);
+  await assertManager(db, orgId, actorId);
   const [u] = await db.select().from(users).where(and(eq(users.id, id), eq(users.orgId, orgId)));
   if (!u) throw new Error("Usuario no encontrado.");
-  if (u.role === "admin") throw new Error("La contraseña del administrador es APP_PASSWORD (variable de Vercel); se cambia allá.");
+  if (isBootstrap(u)) throw new Error("La contraseña del administrador de arranque es APP_PASSWORD (variable de Vercel); se cambia allá.");
+  if (id === actorId) throw new Error("Para cambiar tu propia contraseña usa Mi cuenta.");
   const temp = tempPassword();
   const [row] = await db.update(users).set({ passwordHash: await hashPassword(temp), mustChangePassword: true, failedAttempts: 0, lockedUntil: null, resetRequestedAt: null, sessionVersion: sql`${users.sessionVersion} + 1` as unknown as number }).where(eq(users.id, id)).returning();
   await db.insert(auditLog).values({ orgId, actor: actorId, action: "user.reset_password", entity: id });
@@ -146,7 +178,7 @@ export async function resetPassword(db: Db, orgId: string, actorId: string, id: 
 export async function changeOwnPassword(db: Db, orgId: string, userId: string, current: string, next: string): Promise<User> {
   const [u] = await db.select().from(users).where(and(eq(users.id, userId), eq(users.orgId, orgId)));
   if (!u) throw new Error("Usuario no encontrado.");
-  if (!u.passwordHash) throw new Error("La contraseña del administrador es APP_PASSWORD (variable de Vercel); se cambia allá.");
+  if (!u.passwordHash) throw new Error("La contraseña del administrador de arranque es APP_PASSWORD (variable de Vercel); se cambia allá.");
   if (!(await verifyPassword(current, u.passwordHash))) throw new Error("La contraseña actual no es correcta.");
   const issue = passwordIssue(next);
   if (issue) throw new Error(issue);
@@ -165,5 +197,5 @@ export async function updateOwnName(db: Db, orgId: string, userId: string, name:
 export async function requestReset(db: Db, orgId: string, identifier: string) {
   const key = normEmail(identifier);
   if (!key) return;
-  await db.update(users).set({ resetRequestedAt: new Date() }).where(and(eq(users.orgId, orgId), eq(users.role, "user"), eq(users.active, true), or(eq(users.emailKey, key), eq(users.usernameKey, key))));
+  await db.update(users).set({ resetRequestedAt: new Date() }).where(and(eq(users.orgId, orgId), isNotNull(users.passwordHash), eq(users.active, true), or(eq(users.emailKey, key), eq(users.usernameKey, key))));
 }

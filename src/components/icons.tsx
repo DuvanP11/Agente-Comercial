@@ -21,6 +21,9 @@ const PATHS: Record<string, string> = {
   user: "M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2 M12 11a4 4 0 1 0 0-8 4 4 0 0 0 0 8z",
   logout: "M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4 M16 17l5-5-5-5 M21 12H9",
   dots: "M12 12h.01 M19 12h.01 M5 12h.01",
+  home: "M3 11l9-8 9 8 M5 10v10h5v-6h4v6h5V10",
+  shield: "M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z",
+  eye: "M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z M12 15a3 3 0 1 0 0-6 3 3 0 0 0 0 6z",
 };
 export type IconName = keyof typeof PATHS;
 

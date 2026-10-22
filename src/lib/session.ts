@@ -1,5 +1,6 @@
 import { cookies } from "next/headers";
 import { redirect } from "next/navigation";
+import { canManageUsers, fallbackFor, isHunter } from "./permissions";
 import { authConfigured, makeSessionToken, readSession, SESSION_COOKIE, SESSION_MAX_AGE } from "./auth";
 import { ensureDefaultOrg, getDb } from "./db/client";
 import { strip, userForSession, type PublicUser, type User } from "./services/users";
@@ -28,14 +29,22 @@ export async function requireUser(): Promise<PublicUser> {
   return u;
 }
 
-export async function requireAdmin(): Promise<PublicUser> {
+/** Admin, Gerencia o Head: crean y editan usuarios. */
+export async function requireManager(): Promise<PublicUser> {
   const u = await requireUser();
-  if (u.role !== "admin") redirect("/");
+  if (!canManageUsers(u.role)) redirect(fallbackFor(u.role));
   return u;
 }
 
-export async function startSession(user: Pick<User, "id" | "sessionVersion" | "mustChangePassword">) {
-  (await cookies()).set(SESSION_COOKIE, await makeSessionToken({ u: user.id, v: user.sessionVersion, m: user.mustChangePassword }), {
+/** Cualquier rol salvo Hunter (módulos de gestión, solo lectura incluida). */
+export async function requireNotHunter(): Promise<PublicUser> {
+  const u = await requireUser();
+  if (isHunter(u.role)) redirect(fallbackFor(u.role));
+  return u;
+}
+
+export async function startSession(user: Pick<User, "id" | "sessionVersion" | "mustChangePassword" | "role">) {
+  (await cookies()).set(SESSION_COOKIE, await makeSessionToken({ u: user.id, v: user.sessionVersion, m: user.mustChangePassword, r: user.role }), {
     httpOnly: true, sameSite: "lax", secure: process.env.NODE_ENV === "production", path: "/", maxAge: SESSION_MAX_AGE,
   });
 }

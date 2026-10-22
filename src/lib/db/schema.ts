@@ -295,8 +295,8 @@ export const users = pgTable("users", {
   username: text("username").notNull(),
   usernameKey: text("username_key").notNull(),
   name: text("name").notNull(),
-  /** admin | user */
-  role: text("role").notNull().default("user"),
+  /** hunter | admin | head | it | gerencia */
+  role: text("role").notNull().default("hunter"),
   /** scrypt$N$sal$hash. null = el administrador de arranque, que entra con APP_PASSWORD. */
   passwordHash: text("password_hash"),
   mustChangePassword: boolean("must_change_password").notNull().default(false),

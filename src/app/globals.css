@@ -40,3 +40,17 @@ body { background: var(--color-bg); color: var(--color-text); font-family: var(-
 .kpi-icon { display: inline-flex; width: 1.9rem; height: 1.9rem; align-items: center; justify-content: center; border-radius: 999px; font-size: 1rem; background: color-mix(in srgb, var(--kpi, var(--color-primary)) 20%, transparent); }
 .legend { display: flex; flex-wrap: wrap; gap: .25rem 1rem; font-size: .8em; color: var(--color-muted); }
 .legend i { display: inline-block; width: .7rem; height: .7rem; border-radius: 3px; margin-right: .35rem; vertical-align: -1px; }
+
+/* ---- Bienvenida ---- */
+.hero { position: relative; overflow: hidden; border-radius: calc(var(--radius) * 2); color: var(--color-on-primary); background: linear-gradient(120deg, var(--color-primary) 0%, color-mix(in srgb, var(--color-primary) 55%, var(--s4)) 100%); }
+.hero::before { content: ""; position: absolute; width: 420px; height: 420px; right: -120px; top: -160px; border-radius: 50%; background: radial-gradient(circle, rgb(255 255 255 / .22), transparent 70%); }
+.hero::after { content: ""; position: absolute; width: 300px; height: 300px; left: -100px; bottom: -180px; border-radius: 50%; background: radial-gradient(circle, rgb(255 255 255 / .14), transparent 70%); }
+.hero-btn { display: inline-flex; align-items: center; gap: .5rem; padding: .65rem 1.1rem; border-radius: 999px; font-weight: 700; background: var(--color-on-primary); color: var(--color-primary); transition: transform .15s, box-shadow .15s; }
+.hero-btn:hover { transform: translateY(-2px); box-shadow: 0 8px 22px rgb(0 0 0 / .25); }
+.hero-btn.ghost { background: rgb(255 255 255 / .16); color: var(--color-on-primary); border: 1px solid rgb(255 255 255 / .35); }
+.step-card, .cap-card { transition: transform .15s, box-shadow .15s, border-color .15s; }
+.step-card:hover, .cap-card:hover { transform: translateY(-3px); box-shadow: 0 10px 26px rgb(0 0 0 / .14); border-color: var(--color-primary); }
+.step-num { display: grid; place-items: center; width: 2.1rem; height: 2.1rem; border-radius: 999px; font-weight: 800; background: color-mix(in srgb, var(--color-primary) 18%, transparent); color: var(--color-primary); }
+@keyframes drift { 0%, 100% { transform: translateY(0); } 50% { transform: translateY(-8px); } }
+.drift { animation: drift 5s ease-in-out infinite; }
+@media (prefers-reduced-motion: reduce) { .drift { animation: none; } .hero-btn, .step-card, .cap-card { transition: none; } }

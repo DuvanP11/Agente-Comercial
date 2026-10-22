@@ -16,7 +16,7 @@ async function login(formData: FormData) {
   const r = await authenticate(db, await ensureDefaultOrg(db), String(formData.get("identifier") ?? ""), String(formData.get("password") ?? ""));
   if (!r.ok) redirect(`/login?error=${r.reason === "locked" ? "locked" : "1"}`);
   await startSession(r.user);
-  redirect(r.user.mustChangePassword ? "/cuenta?cambio=obligatorio" : "/");
+  redirect(r.user.mustChangePassword ? "/cuenta?cambio=obligatorio" : "/bienvenida");
 }
 
 export default async function Login({ searchParams }: { searchParams: Promise<{ error?: string }> }) {
