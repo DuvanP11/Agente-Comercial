@@ -215,3 +215,11 @@ describe("captar clientes", () => {
     await expect(approachFor(db, org, "00000000-0000-0000-0000-000000000000")).rejects.toThrow(/no encontrado/);
   });
 });
+
+import { stripEmoji, whatsappLink } from "@/lib/contact-links";
+describe("enlace de WhatsApp sin emojis", () => {
+  it("quita emojis y deja el texto limpio", () => {
+    expect(stripEmoji("¡Hola, Jaime! 👋💜 Somos *PIBOX* 🚚📦. ¿Hablamos? 🤝")).toBe("¡Hola, Jaime! Somos *PIBOX*. ¿Hablamos?");
+    expect(decodeURIComponent(whatsappLink("573154051883", "Hola 👋🏽 amigo ❤️")!.split("text=")[1])).toBe("Hola amigo");
+  });
+});

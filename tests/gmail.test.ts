@@ -83,7 +83,7 @@ describe("secretos y estado OAuth", () => {
   it("state: válido, alterado, vencido; solo vuelve a rutas internas", () => {
     const st = signState("ana", "/campanas/abc");
     expect(verifyState(st)).toEqual({ userId: "ana", returnTo: "/campanas/abc" });
-    expect(verifyState(st.replace(/.$/, "A"))).toBeNull();
+    expect(verifyState((st[0] === "e" ? "f" : "e") + st.slice(1))).toBeNull();
     expect(verifyState(st, Date.now() + 11 * 60_000)).toBeNull();
     expect(safeReturn("https://malo.com")).toBe("/integraciones"); expect(safeReturn("//malo.com")).toBe("/integraciones");
   });

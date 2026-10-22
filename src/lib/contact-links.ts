@@ -1,8 +1,14 @@
-/** Enlace wa.me: abre la conversación con el texto prellenado; NO envía nada. */
+/** Quita emojis y sus modificadores. WhatsApp Web corrompe muchos emojis (salen como «�») cuando llegan por el enlace wa.me. */
+export function stripEmoji(text: string): string {
+  return text.replace(/[\p{Extended_Pictographic}\p{Regional_Indicator}\u200d\ufe0f\u{1F3FB}-\u{1F3FF}\u20e3]/gu, "")
+    .replace(/[ \t]+([,.;:!?)])/g, "$1").replace(/[ \t]{2,}/g, " ").replace(/[ \t]+$/gm, "").trim();
+}
+
+/** Enlace wa.me: abre la conversación con el texto prellenado; NO envía nada. El texto va SIN emojis (ver stripEmoji); con «Copiar mensaje» se pega completo. */
 export function whatsappLink(e164: string, text: string): string | null {
   const digits = e164.replace(/\D/g, "");
   if (!/^\d{10,15}$/.test(digits)) return null;
-  return `https://wa.me/${digits}?text=${encodeURIComponent(text)}`;
+  return `https://wa.me/${digits}?text=${encodeURIComponent(stripEmoji(text))}`;
 }
 
 /** Búsqueda en Google Maps por texto: no implica coordenadas exactas. */
