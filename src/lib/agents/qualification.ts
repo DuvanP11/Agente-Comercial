@@ -2,6 +2,7 @@ import { z } from "zod";
 import { inventedClaims, looksEnglish, lenientNumber, lenientString, lenientStrings, SYSTEM_RULES, untrusted } from "../ai/guards";
 import { safeWebUrl } from "../contact-links";
 import { CRITERION_LABELS, DEFAULT_WEIGHTS, type CriterionKey } from "../scoring/score";
+import { withGuidance } from "../training";
 import type { AgentDef } from "./core";
 
 const KEYS = Object.keys(DEFAULT_WEIGHTS) as [CriterionKey, ...CriterionKey[]];
@@ -25,6 +26,7 @@ const input = z.object({
     hasPhone: z.boolean(), hasEmail: z.boolean(), website: z.string().nullable(),
   }),
   evidence: z.array(z.object({ id: z.string(), field: z.string(), value: z.string(), source: z.string(), verification: z.string() })).max(40),
+  guidance: z.string().max(3000).nullable().default(null),
 });
 export type QualificationInput = z.infer<typeof input>;
 
@@ -50,13 +52,13 @@ export const qualificationAgent: AgentDef<QualificationInput, QualificationPropo
   inputSchema: input,
   outputSchema: output as unknown as z.ZodType<QualificationProposal>,
   build: (i) => ({
-    system: `${SYSTEM_RULES} Tarea: proponer cómo valorar a un prospecto frente a estos criterios: ` +
+    system: withGuidance(`${SYSTEM_RULES} Tarea: proponer cómo valorar a un prospecto frente a estos criterios: ` +
       KEYS.filter((k) => !DETERMINISTIC.includes(k)).map((k) => `${k} (${CRITERION_LABELS[k]})`).join("; ") + ". " +
       `Devuelve {"assessments":[{"criterion":string,"kind":"confirmed"|"inferred"|"hypothesis"|"unknown","value":0..1,"evidenceIds":string[],"note":string}],"summary":string}. ` +
       `Reglas: usa "confirmed" SOLO si citas ids de la lista de evidencias que lo demuestren (y solo para icp_fit y geo_compatibility); ` +
       `usa "inferred" para deducciones razonables y "hypothesis" para suposiciones por validar; si no hay base para valorar un criterio, usa "unknown" (NUNCA "hypothesis" con value 0: un valor bajo no es lo mismo que no saber). ` +
-      `No supongas volumen, frecuencia ni necesidad logística como hechos. Cada note: máximo 200 caracteres y sin cifras que no estén en los datos.`,
-    user: untrusted(i),
+      `No supongas volumen, frecuencia ni necesidad logística como hechos. Cada note: máximo 200 caracteres y sin cifras que no estén en los datos.`, i.guidance),
+    user: untrusted({ prospect: i.prospect, evidence: i.evidence }),
   }),
   validate: (inp, out) => {
     const warnings: string[] = [];

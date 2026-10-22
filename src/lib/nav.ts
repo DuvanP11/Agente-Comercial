@@ -16,7 +16,7 @@ export const NAV: NavItem[] = [
   { slug: "metas", label: "Metas y rendimiento", href: "/metas", status: "partial", phase: "9", note: "Metas editables; avance real solo para prospectos, calificados y contactos." },
   { slug: "mercado", label: "Inteligencia de mercado", href: "/mercado", status: "partial", phase: "5", note: "Conteos y embudo por rubro, ciudad y fuente con datos reales. Tendencias y análisis con IA: pendientes." },
   { slug: "agentes", label: "Agentes y skills", href: "/agentes", status: "partial", phase: "4", note: "Catálogo con estado real, configuración de IA e historial. Botones de IA en las pantallas: al configurar el proveedor." },
-  { slug: "entrenamiento", label: "Entrenamiento de IA", href: "/m/entrenamiento", status: "pending", phase: "8" },
+  { slug: "entrenamiento", label: "Entrenamiento de IA", href: "/entrenamiento", status: "partial", phase: "8", note: "Guía escrita por el equipo para la redacción y la calificación. No reentrena modelos." },
   { slug: "integraciones", label: "Integraciones", href: "/integraciones", status: "partial", phase: "7" },
   { slug: "reportes", label: "Reportes", href: "/reportes", status: "partial", phase: "9", note: "Descarga CSV de prospectos; más reportes pendientes." },
   { slug: "configuracion", label: "Configuración", href: "/configuracion", status: "partial", phase: "2", note: "Pesos del puntaje y cobertura mínima. Usuarios y roles: pendientes." },

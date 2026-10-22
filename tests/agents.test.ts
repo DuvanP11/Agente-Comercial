@@ -577,3 +577,35 @@ describe("Configuración: pesos y cobertura mínima", () => {
     expect((p.scoreJson as { priority: number | null }).priority).toBe(100); // 50 de 140 = 36 % ≥ 30 % mínimo: ya hay prioridad
   });
 });
+
+import { getGuidance, saveTraining } from "@/lib/services/settings";
+import { guidanceText, parseTraining, withGuidance } from "@/lib/training";
+
+describe("Entrenamiento: la guía del equipo llega a los agentes, sin saltarse las reglas", () => {
+  it("sin nada escrito no se añade guía; con texto se recorta y se arma", async () => {
+    const d = await createPgliteDb(); const o = await ensureDefaultOrg(d);
+    expect(await getGuidance(d, o)).toBeNull();
+    await saveTraining(d, o, { company: "  PIBOX mueve paquetes.  ", tone: "x".repeat(999), examples: ["Hola, ¿cómo están?", "", "b", "c", "d"] }, "t");
+    const g = (await getGuidance(d, o))!;
+    expect(g).toContain("PIBOX mueve paquetes.");
+    expect(g.match(/Ejemplo de mensaje aprobado/g)).toHaveLength(3);
+    expect(parseTraining({ tone: "x".repeat(999) }).tone).toHaveLength(300);
+    expect(parseTraining("basura")).toMatchObject({ company: "", examples: [] });
+  });
+  it("va en las instrucciones (system), nunca en los datos, y no anula las reglas", () => {
+    const sys = withGuidance("REGLAS.", "Tono: cercano");
+    expect(sys).toMatch(/^REGLAS\./); expect(sys).toContain("Tono: cercano"); expect(sys).toMatch(/NO anula las reglas/);
+    expect(withGuidance("REGLAS.", null)).toBe("REGLAS.");
+    expect(guidanceText(parseTraining({}))).toBeNull();
+  });
+  it("la calificación recibe la guía en el system prompt y el modelo no ve contacto", async () => {
+    const d = await createPgliteDb(); const o = await ensureDefaultOrg(d);
+    await saveTraining(d, o, { idealCustomer: "Tiendas con domicilios propios" }, "t");
+    const out = await ingestProspects(d, o, [raw({ name: "Tienda Uno", phone: "3107555555", sourceId: "g1" })]);
+    const f = fake('{"assessments":[],"summary":""}');
+    await proposeAssessment(d, o, out[0].prospectId, f.p, "t");
+    expect(f.calls[0].system).toContain("Tiendas con domicilios propios");
+    const sent = JSON.stringify(f.calls);
+    expect(sent).not.toContain("3107555555");
+  });
+});

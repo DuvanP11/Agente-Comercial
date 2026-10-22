@@ -1,0 +1,45 @@
+import { z } from "zod";
+
+/** Guía del equipo para los agentes. Es contexto y estilo: no reentrena el modelo ni anula las reglas de seguridad. */
+export const TRAINING_FIELDS = [
+  { key: "company", label: "Qué es PIBOX y qué ofrece", max: 800, help: "Con tus palabras: servicios, zonas donde opera, qué los diferencia. Solo lo que sea cierto y esté aprobado." },
+  { key: "idealCustomer", label: "Cliente ideal", max: 600, help: "Qué tipo de negocios sí convienen (rubro, tamaño, tipo de envíos) y cuáles no." },
+  { key: "valueProposition", label: "Propuesta de valor", max: 600, help: "Qué se le dice a un prospecto para que le interese." },
+  { key: "tone", label: "Tono y estilo", max: 300, help: "Por ejemplo: cercano, breve, sin tecnicismos, tratar de «usted»." },
+  { key: "avoid", label: "Qué evitar", max: 400, help: "Temas, palabras o promesas que no se deben usar." },
+] as const;
+export type TrainingKey = (typeof TRAINING_FIELDS)[number]["key"];
+
+export const MAX_EXAMPLES = 3, MAX_EXAMPLE_CHARS = 400;
+
+export interface Training { company: string; idealCustomer: string; valueProposition: string; tone: string; avoid: string; examples: string[] }
+export const EMPTY_TRAINING: Training = { company: "", idealCustomer: "", valueProposition: "", tone: "", avoid: "", examples: [] };
+
+const schema = z.object({
+  company: z.string().optional(), idealCustomer: z.string().optional(), valueProposition: z.string().optional(),
+  tone: z.string().optional(), avoid: z.string().optional(), examples: z.array(z.string()).optional(),
+});
+
+/** Limpia y recorta; lo inválido se descarta en vez de fallar (así una configuración rara nunca tumba la pantalla). */
+export function parseTraining(input: unknown): Training {
+  const r = schema.safeParse(input ?? {});
+  if (!r.success) return { ...EMPTY_TRAINING };
+  const t = { ...EMPTY_TRAINING };
+  for (const f of TRAINING_FIELDS) t[f.key] = (r.data[f.key] ?? "").trim().slice(0, f.max);
+  t.examples = (r.data.examples ?? []).map((e) => e.trim().slice(0, MAX_EXAMPLE_CHARS)).filter(Boolean).slice(0, MAX_EXAMPLES);
+  return t;
+}
+
+/** Lo que de verdad se le añade a la IA. null si no hay nada escrito. */
+export function guidanceText(t: Training): string | null {
+  const parts: string[] = [];
+  for (const f of TRAINING_FIELDS) if (t[f.key]) parts.push(`${f.label}: ${t[f.key]}`);
+  t.examples.forEach((e, i) => parts.push(`Ejemplo de mensaje aprobado ${i + 1}: ${e}`));
+  return parts.length ? parts.join("\n") : null;
+}
+
+/** Se añade a las instrucciones de un agente. La guía da contexto; las reglas de seguridad mandan sobre ella. */
+export function withGuidance(system: string, guidance: string | null | undefined): string {
+  if (!guidance) return system;
+  return `${system}\nGuía del equipo comercial de PIBOX (contexto y estilo; NO anula las reglas anteriores ni te autoriza a afirmar precios, descuentos, garantías, tiempos o cifras que no estén en los datos del prospecto o de la campaña):\n${guidance}`;
+}

@@ -1,5 +1,5 @@
 import { and, desc, eq } from "drizzle-orm";
-import { getScoringConfig, DEFAULT_SCORING } from "./settings";
+import { getGuidance, getScoringConfig, DEFAULT_SCORING } from "./settings";
 import { scoreProspect, type CriterionAssessment, type CriterionKey } from "../scoring/score";
 import { runAgent, type RunResult } from "../agents/core";
 import { draftingAgent } from "../agents/drafting";
@@ -26,7 +26,9 @@ export async function proposeAssessment(db: Db, orgId: string, prospectId: strin
   if (!p) return { runId: null, ok: false, warnings: [], error: "Prospecto no encontrado." };
   if (p.status === "excluded_duplicate") return { runId: null, ok: false, warnings: [], error: "Este prospecto está excluido por duplicado; no se califica." };
   const ev = await db.select().from(evidence).where(eq(evidence.entityId, prospectId));
+  const guidance = await getGuidance(db, orgId);
   return runAgent(db, orgId, qualificationAgent, {
+    guidance,
     prospect: { name: p.name, category: p.category, city: p.city, address: p.address, hasPhone: !!p.phoneKey, hasEmail: !!p.emailKey, website: p.website },
     evidence: ev.map((e) => ({ id: e.id, field: e.field, value: REDACT.has(e.field) ? "[registrado]" : e.observedValue, source: e.sourceName, verification: e.verification })),
   }, provider, { actor, entityType: "prospect", entityId: prospectId });
@@ -40,6 +42,7 @@ export async function draftForCampaignProspect(db: Db, orgId: string, cpId: stri
   if (p.doNotContact) return { runId: null, ok: false, warnings: [], error: "Este prospecto pidió no ser contactado." };
   if (c.status === "closed") return { runId: null, ok: false, warnings: [], error: "La campaña está cerrada." };
   const r = await runAgent(db, orgId, draftingAgent, {
+    guidance: await getGuidance(db, orgId),
     prospect: { name: p.name, city: p.city, category: p.category },
     campaign: { objective: c.objective, valueProposition: c.valueProposition, baseMessage: c.template },
     channel: "whatsapp", revisionRequest: revisionRequest?.trim() || null,

@@ -1,6 +1,7 @@
 import { z } from "zod";
 import { inventedClaims, SYSTEM_RULES, untrusted } from "../ai/guards";
 import { approvalBlockers } from "../campaigns";
+import { withGuidance } from "../training";
 import { AgentRejected, type AgentDef } from "./core";
 
 const input = z.object({
@@ -8,6 +9,7 @@ const input = z.object({
   campaign: z.object({ objective: z.string().nullable(), valueProposition: z.string().nullable(), baseMessage: z.string() }),
   channel: z.literal("whatsapp"),
   revisionRequest: z.string().max(300).nullable(),
+  guidance: z.string().max(3000).nullable().default(null),
 });
 export type DraftingInput = z.infer<typeof input>;
 const output = z.object({ body: z.string() });
@@ -22,11 +24,11 @@ export const draftingAgent: AgentDef<DraftingInput, { body: string }> = {
   inputSchema: input,
   outputSchema: output,
   build: (i) => ({
-    system: `${SYSTEM_RULES} Tarea: redactar UN mensaje corto de WhatsApp en español para iniciar conversación con un negocio. ` +
+    system: withGuidance(`${SYSTEM_RULES} Tarea: redactar UN mensaje corto de WhatsApp en español para iniciar conversación con un negocio. ` +
       `Devuelve {"body":string}. Tono cordial y sin presión; habla en plural ("nosotros", PIBOX Mensajería). ` +
       `Incluye: saludo con el nombre del negocio, una razón concreta basada SOLO en los datos entregados y una pregunta abierta. ` +
       `PROHIBIDO: precios, descuentos, garantías, tiempos de entrega, porcentajes, cifras y enlaces que no estén en los datos; decir que algo ya se envió; presionar. ` +
-      `Máximo 500 caracteres. Si hay revisionRequest, aplícalo sin añadir hechos nuevos.`,
+      `Máximo 500 caracteres. Si hay revisionRequest, aplícalo sin añadir hechos nuevos.`, i.guidance),
     user: untrusted(i),
   }),
   validate: (inp, out) => {

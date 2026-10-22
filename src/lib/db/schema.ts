@@ -239,5 +239,7 @@ export const agentRuns = pgTable("agent_runs", {
 export const orgSettings = pgTable("org_settings", {
   orgId: text("org_id").primaryKey().references(() => organizations.id),
   scoring: jsonb("scoring"),
+  /** Guía de la empresa para los agentes de IA (módulo Entrenamiento). No reentrena ningún modelo. */
+  training: jsonb("training"),
   updatedAt: ts("updated_at"),
 });

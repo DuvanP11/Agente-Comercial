@@ -1,6 +1,7 @@
 import { eq } from "drizzle-orm";
 import { z } from "zod";
 import type { Db } from "../db/client";
+import { guidanceText, parseTraining, type Training } from "../training";
 import { auditLog, orgSettings, prospects } from "../db/schema";
 import { CRITERION_LABELS, DEFAULT_WEIGHTS, MIN_COVERAGE, scoreProspect, type CriterionAssessment, type CriterionKey } from "../scoring/score";
 
@@ -57,4 +58,27 @@ export async function saveScoringConfig(db: Db, orgId: string, input: unknown, a
 
 export async function resetScoringConfig(db: Db, orgId: string, actor: string) {
   return saveScoringConfig(db, orgId, DEFAULT_SCORING, actor);
+}
+
+// ---------------------------------------------------------------------------------------------
+// Entrenamiento de IA: guía escrita por el equipo (contexto y estilo para los agentes)
+// ---------------------------------------------------------------------------------------------
+
+export async function getTraining(db: Db, orgId: string): Promise<Training> {
+  const [row] = await db.select().from(orgSettings).where(eq(orgSettings.orgId, orgId));
+  return parseTraining(row?.training);
+}
+
+export async function saveTraining(db: Db, orgId: string, input: unknown, actor: string): Promise<Training> {
+  const t = parseTraining(input);
+  const now = new Date();
+  await db.insert(orgSettings).values({ orgId, training: t, updatedAt: now })
+    .onConflictDoUpdate({ target: orgSettings.orgId, set: { training: t, updatedAt: now } });
+  await db.insert(auditLog).values({ orgId, actor, action: "settings.training", entity: orgId, detail: { chars: guidanceText(t)?.length ?? 0 } });
+  return t;
+}
+
+/** Texto que se añade a las instrucciones de los agentes (o null si el equipo no ha escrito nada). */
+export async function getGuidance(db: Db, orgId: string): Promise<string | null> {
+  return guidanceText(await getTraining(db, orgId));
 }
