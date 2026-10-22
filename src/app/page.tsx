@@ -1,14 +1,24 @@
-import { and, count, eq, isNull, sql } from "drizzle-orm";
+import { and, count, eq, gte, isNull, sql } from "drizzle-orm";
 import { ensureDefaultOrg, getDb } from "@/lib/db/client";
+import { ChartCard, Columns, Donut, Funnel, HBars, Spark, TrendChart, SERIES } from "@/components/charts";
+import { funnel, priorityHistogram, PRIORITY_BANDS, weekBuckets } from "@/lib/dashboard";
+import { bySource, byCategory, byCity, quality } from "@/lib/market";
+import { loadMarket } from "@/lib/services/market";
 import { activities, clients, duplicateReviews, prospects, searches } from "@/lib/db/schema";
 
 export const dynamic = "force-dynamic";
 
-function Kpi({ label, value, note }: { label: string; value: string | number; note?: string }) {
+function Kpi({ label, value, note, color = "var(--s1)", icon, trend }: { label: string; value: string | number; note?: string; color?: string; icon?: string; trend?: number[] }) {
   return (
-    <div className="card">
-      <div className="text-xs text-muted">{label}</div>
-      <div className="mt-1 text-2xl font-bold">{value}</div>
+    <div className="card kpi" style={{ ["--kpi" as string]: color }}>
+      <div className="flex items-center justify-between gap-2">
+        <div className="text-xs text-muted">{label}</div>
+        {icon && <span className="kpi-icon" aria-hidden="true">{icon}</span>}
+      </div>
+      <div className="mt-1 flex items-end justify-between gap-2">
+        <div className="text-2xl font-bold">{value}</div>
+        {trend && <Spark values={trend} color={color} />}
+      </div>
       {note && <div className="mt-1 text-xs text-muted">{note}</div>}
     </div>
   );
@@ -34,6 +44,18 @@ export default async function Dashboard() {
     n(db.select({ c: count() }).from(prospects).where(and(eq(prospects.orgId, org), sql`${prospects.emailKey} <> ''`))),
     n(db.select({ c: count() }).from(prospects).where(and(eq(prospects.orgId, org), eq(prospects.isDemo, true)))),
   ]);
+  const now = new Date(), since = new Date(now.getTime() - 12 * 7 * 86_400_000);
+  const [market, newProspects, touches] = await Promise.all([
+    loadMarket(db, org, { since: null, includeDemo: true }),
+    db.select({ at: prospects.createdAt }).from(prospects).where(and(eq(prospects.orgId, org), gte(prospects.createdAt, since), sql`${prospects.status} <> 'excluded_duplicate'`)),
+    db.select({ at: activities.createdAt }).from(activities).where(and(eq(activities.orgId, org), gte(activities.createdAt, since), sql`${activities.type} in ('whatsapp_opened','email_sent')`)),
+  ]);
+  const wkP = weekBuckets(newProspects.map((r) => r.at), now), wkT = weekBuckets(touches.map((r) => r.at), now);
+  const labels = wkP.map((b) => b.start.toLocaleDateString("es-CO", { day: "numeric", month: "short" }));
+  const rows = market.rows, fun = funnel(rows), q = quality(rows);
+  const hist = priorityHistogram(rows.map((r) => r.priority));
+  const statusCount = (st: string) => rows.filter((r) => r.status === st).length;
+  const rubros = byCategory(rows).slice(0, 8), ciudades = byCity(rows).slice(0, 6), fuentes = bySource(rows);
   const pct = (x: number) => (total ? `${Math.round((x / total) * 100)} %` : "—");
 
   return (
@@ -44,22 +66,57 @@ export default async function Dashboard() {
       </header>
       {demo > 0 && <p role="status" className="card text-sm badge-warn">Hay {demo} prospectos de DEMOSTRACIÓN contados en estas cifras.</p>}
       <section aria-label="Investigación" className="grid grid-cols-2 gap-3 lg:grid-cols-4">
-        <Kpi label="Clientes existentes cargados" value={clientCount} />
-        <Kpi label="Prospectos descubiertos" value={total} />
-        <Kpi label="Excluidos por duplicidad" value={excluded} />
-        <Kpi label="Duplicados por revisar" value={review} />
-        <Kpi label="Prospectos calificados" value={qualified} note="Requiere el agente de calificación (fase 5)" />
-        <Kpi label="Con teléfono" value={pct(withPhone)} note="Del total de prospectos" />
-        <Kpi label="Con correo" value={pct(withEmail)} />
-        <Kpi label="Búsquedas con error" value={failedSearches} />
+        <Kpi label="Clientes existentes cargados" value={clientCount} color="var(--s4)" icon="🏢" />
+        <Kpi label="Prospectos descubiertos" value={total} color="var(--s1)" icon="🔎" trend={wkP.map((b) => b.count)} note="Tendencia: últimas 12 semanas" />
+        <Kpi label="Excluidos por duplicidad" value={excluded} color="var(--s5)" icon="⧉" />
+        <Kpi label="Duplicados por revisar" value={review} color="var(--s2)" icon="⚠" />
+        <Kpi label="Prospectos calificados" value={qualified} color="var(--s3)" icon="✔" note="Los califica una persona en Analizar clientes" />
+        <Kpi label="Con teléfono" value={pct(withPhone)} color="var(--s1)" icon="☎" note="Del total de prospectos" />
+        <Kpi label="Con correo" value={pct(withEmail)} color="var(--s4)" icon="✉" />
+        <Kpi label="Búsquedas con error" value={failedSearches} color="var(--s2)" icon="!" />
       </section>
       <section aria-label="Comercial" className="grid grid-cols-2 gap-3 lg:grid-cols-4">
-        <Kpi label="Conversaciones abiertas por WhatsApp" value={contacts} note="Se abrió el chat; no implica que se haya enviado" />
-        <Kpi label="Respondieron" value={replied} note="Prospectos distintos que pasaron a “Respondió” en campañas" />
-        <Kpi label="Reuniones agendadas" value={meetings} note="Desde campañas" />
-        <Kpi label="Propuestas enviadas" value={proposals} note="Desde campañas" />
-        <Kpi label="Clientes ganados" value={won} note="Desde campañas" />
+        <Kpi label="Conversaciones abiertas por WhatsApp" value={contacts} color="var(--s3)" icon="💬" trend={wkT.map((b) => b.count)} note="Se abrió el chat; no implica que se haya enviado" />
+        <Kpi label="Respondieron" value={replied} color="var(--s1)" icon="↩" note="Prospectos distintos que pasaron a “Respondió” en campañas" />
+        <Kpi label="Reuniones agendadas" value={meetings} color="var(--s4)" icon="📅" note="Desde campañas" />
+        <Kpi label="Propuestas enviadas" value={proposals} color="var(--s2)" icon="📄" note="Desde campañas" />
+        <Kpi label="Clientes ganados" value={won} color="var(--s3)" icon="🏆" note="Desde campañas" />
         <Kpi label="Ingresos, costos y margen" value="No disponible" note="Requiere carga de datos financieros (fase 9)" />
+      </section>
+      <section aria-label="Gráficos" className="grid gap-3 lg:grid-cols-2">
+        <ChartCard title="Tendencia semanal" note="Prospectos nuevos y chats abiertos por semana (últimas 12 semanas). Misma escala." legend={[{ label: "Prospectos nuevos", color: SERIES[0] }, { label: "Chats abiertos por WhatsApp", color: SERIES[2] }]}>
+          <TrendChart labels={labels} series={[{ name: "Prospectos nuevos", color: SERIES[0], values: wkP.map((b) => b.count) }, { name: "Chats abiertos", color: SERIES[2], values: wkT.map((b) => b.count) }]} />
+        </ChartCard>
+        <ChartCard title="Embudo comercial" note="Cada etapa cuenta a quien llegó a ella o más lejos; el % es frente a la etapa anterior.">
+          <Funnel steps={fun} />
+        </ChartCard>
+        <ChartCard title="Estado de los prospectos" note="Sin los duplicados excluidos.">
+          <Donut center={String(rows.length)} data={[
+            { label: "Nuevos", value: statusCount("new"), color: SERIES[0] },
+            { label: "Calificados", value: statusCount("qualified"), color: SERIES[2] },
+            { label: "Contactados", value: statusCount("contacted"), color: SERIES[3] },
+            { label: "Por revisar (duplicado)", value: statusCount("needs_review"), color: SERIES[1] },
+            { label: "Archivados", value: statusCount("archived"), color: SERIES[4] },
+          ]} />
+        </ChartCard>
+        <ChartCard title="Prioridad comercial" note={`Cuántos prospectos caen en cada franja. ${hist.none} no tienen prioridad todavía (información insuficiente, no es prioridad baja).`}>
+          <Columns data={PRIORITY_BANDS.map((l, i) => ({ label: l, value: hist.bands[i] }))} color="var(--s4)" />
+        </ChartCard>
+        <ChartCard title="Calidad de los datos de contacto" note="Porcentaje de prospectos que tiene cada dato.">
+          <HBars unit=" %" max={100} data={[
+            { label: "Teléfono", value: q.phone ?? 0, color: SERIES[0] }, { label: "Sitio web", value: q.web ?? 0, color: SERIES[2] },
+            { label: "Correo", value: q.email ?? 0, color: SERIES[3] }, { label: "Dirección", value: q.address ?? 0, color: SERIES[1] },
+          ]} />
+        </ChartCard>
+        <ChartCard title="Fuentes de los prospectos" note="De dónde salieron.">
+          <HBars data={fuentes.map((g, i) => ({ label: g.label, value: g.total, color: SERIES[i % 3], note: `${g.withPhone} con teléfono` }))} />
+        </ChartCard>
+        <ChartCard title="Rubros con más prospectos" note="Top 8 por cantidad.">
+          <HBars color="var(--s1)" data={rubros.map((g) => ({ label: g.label, value: g.total, note: `${g.withPhone} con teléfono · ${g.qualified} calificados` }))} />
+        </ChartCard>
+        <ChartCard title="Ciudades con más prospectos" note="Top 6 por cantidad.">
+          <HBars color="var(--s3)" data={ciudades.map((g) => ({ label: g.label, value: g.total, note: `${g.withPhone} con teléfono` }))} />
+        </ChartCard>
       </section>
     </div>
   );

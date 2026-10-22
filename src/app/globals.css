@@ -29,3 +29,14 @@ body { background: var(--color-bg); color: var(--color-text); font-family: var(-
 .table td { padding: .55rem .6rem; border-bottom: 1px solid var(--color-border); vertical-align: top; }
 .badge { display: inline-block; border-radius: 999px; padding: .1rem .55rem; font-size: .75em; font-weight: 600; background: var(--color-surface-2); border: 1px solid var(--color-border); }
 .badge-warn { color: var(--color-warning); } .badge-ok { color: var(--color-success); } .badge-bad { color: var(--color-danger); }
+
+/* ---- Gráficos del dashboard: paleta categórica validada (azul, naranja, aguamarina) + azul secuencial ---- */
+:root, .viz { --s1: #3b82e6; --s2: #eb6834; --s3: #1baf7a; --s4: #8b7cf0; --s5: #e87ba4; --grid: color-mix(in srgb, var(--color-text) 12%, transparent); }
+.viz text { fill: var(--color-muted); font-size: 11px; font-family: inherit; }
+.viz .val { fill: var(--color-text); font-weight: 600; }
+.viz-mark { transition: opacity .12s; } .viz-mark:hover { opacity: .8; }
+.kpi { position: relative; overflow: hidden; }
+.kpi::before { content: ""; position: absolute; inset: 0 auto 0 0; width: 4px; background: var(--kpi, var(--color-primary)); }
+.kpi-icon { display: inline-flex; width: 1.9rem; height: 1.9rem; align-items: center; justify-content: center; border-radius: 999px; font-size: 1rem; background: color-mix(in srgb, var(--kpi, var(--color-primary)) 20%, transparent); }
+.legend { display: flex; flex-wrap: wrap; gap: .25rem 1rem; font-size: .8em; color: var(--color-muted); }
+.legend i { display: inline-block; width: .7rem; height: .7rem; border-radius: 3px; margin-right: .35rem; vertical-align: -1px; }
