@@ -1,6 +1,7 @@
 import { eq } from "drizzle-orm";
 import { z } from "zod";
 import type { Db } from "../db/client";
+import { DEFAULT_RULES, parseRules, type ContactRules } from "../contact-tracking";
 import { guidanceText, parseTraining, type Training } from "../training";
 import { auditLog, orgSettings, prospects } from "../db/schema";
 import { CRITERION_LABELS, DEFAULT_WEIGHTS, MIN_COVERAGE, scoreProspect, type CriterionAssessment, type CriterionKey } from "../scoring/score";
@@ -81,4 +82,23 @@ export async function saveTraining(db: Db, orgId: string, input: unknown, actor:
 /** Texto que se añade a las instrucciones de los agentes (o null si el equipo no ha escrito nada). */
 export async function getGuidance(db: Db, orgId: string): Promise<string | null> {
   return guidanceText(await getTraining(db, orgId));
+}
+
+// ---------------------------------------------------------------------------------------------
+// Reglas de contacto (máximo de intentos)
+// ---------------------------------------------------------------------------------------------
+
+export async function getContactRules(db: Db, orgId: string): Promise<ContactRules> {
+  const [row] = await db.select().from(orgSettings).where(eq(orgSettings.orgId, orgId));
+  if (!row?.contactRules) return DEFAULT_RULES;
+  try { return parseRules(row.contactRules); } catch { return DEFAULT_RULES; }
+}
+
+export async function saveContactRules(db: Db, orgId: string, input: unknown, actor: string): Promise<ContactRules> {
+  const rules = parseRules(input);
+  const now = new Date();
+  await db.insert(orgSettings).values({ orgId, contactRules: rules, updatedAt: now })
+    .onConflictDoUpdate({ target: orgSettings.orgId, set: { contactRules: rules, updatedAt: now } });
+  await db.insert(auditLog).values({ orgId, actor, action: "settings.contact_rules", entity: orgId, detail: rules });
+  return rules;
 }

@@ -8,9 +8,24 @@ import { duplicateMessage } from "@/lib/dedup/match";
 import { mailtoLink, mapSearchLink, phoneLinks, safeWebUrl } from "@/lib/contact-links";
 import { CRITERION_LABELS, type ScoreResult } from "@/lib/scoring/score";
 import { SEARCH_ID } from "@/lib/services/searches";
+import { ContactManager } from "./ContactManager";
+import { stateOf } from "@/lib/services/contact-tracking";
+import { getContactRules } from "@/lib/services/settings";
+import { ensureDefaultOrg } from "@/lib/db/client";
+import { isOutcome, OUTCOMES, type Outcome } from "@/lib/contact-tracking";
 import { Composer } from "./Composer";
 import { ContactEditor } from "./ContactEditor";
 import { resolveDuplicate } from "./actions";
+
+const ACT_CHANNEL: Record<string, string> = { whatsapp: "WhatsApp", call: "llamada", email: "correo", visit: "visita u otro" };
+function actLabel(a: { type: string; detail: unknown }): string {
+  const d = (a.detail ?? {}) as { channel?: string; n?: number; note?: string | null; to?: string };
+  if (a.type === "whatsapp_opened") return "Se abrió WhatsApp (envío no confirmado)";
+  if (a.type === "contact_attempt") return `Intento de contacto #${d.n ?? "?"} por ${ACT_CHANNEL[d.channel ?? ""] ?? "otro canal"}${d.note ? `: ${d.note}` : ""}`;
+  if (a.type === "contact_outcome") return `Resultado: ${(OUTCOMES as Record<string, string>)[d.to ?? ""] ?? d.to}${d.note ? ` — ${d.note}` : ""}`;
+  if (a.type === "campaign_status") return `Cambió su estado en una campaña${d.to ? ` a «${d.to}»` : ""}`;
+  return a.type;
+}
 
 export const dynamic = "force-dynamic";
 
@@ -36,6 +51,8 @@ export default async function Ficha({ params, searchParams }: { params: Promise<
   }
   const contradictions = findContradictions(ev.map((e) => ({ field: e.field, value: e.observedValue, sourceName: e.sourceName })));
   const score = p.scoreJson as ScoreResult | null;
+  const org = await ensureDefaultOrg(db);
+  const cst = await stateOf(db, org, p), rules = await getContactRules(db, org);
   const draft = `Hola, equipo de ${p.name}. Somos PIBOX Mensajería. Nos gustaría conocer cómo gestionan hoy sus entregas y ver si podemos ayudarles. ¿Con quién podríamos hablar?`;
 
   return (
@@ -78,6 +95,12 @@ export default async function Ficha({ params, searchParams }: { params: Promise<
           googleUrl={`https://www.google.com/search?q=${encodeURIComponent([p.name, p.city, "teléfono contacto"].filter(Boolean).join(" "))}`} />
       </section>
 
+      <section className="card" aria-label="Gestión de contacto">
+        <h2 className="mb-2 font-semibold">Gestión de contacto</h2>
+        <ContactManager prospectId={id} stateKey={cst.key} canContact={cst.canContact} reason={cst.reason} attempts={p.contactAttempts} max={rules.maxAttempts}
+          outcome={(isOutcome(p.contactOutcome) ? p.contactOutcome : "pending") as Outcome} note={p.outcomeNote ?? ""} lastAttempt={p.lastAttemptAt ? p.lastAttemptAt.toLocaleString("es-CO") : null} />
+      </section>
+
       <section className="card" aria-label="Calificación">
         <h2 className="mb-1 font-semibold">Calificación comercial</h2>
         {!score ? <p className="text-sm text-muted">Sin calificar. El agente de calificación (fase 5) aún no está implementado; no se asigna puntaje por defecto.</p> : (
@@ -109,7 +132,7 @@ export default async function Ficha({ params, searchParams }: { params: Promise<
 
       <section className="card" aria-label="Actividad"><h2 className="mb-1 font-semibold">Historial</h2>
         {acts.length === 0 ? <p className="text-sm text-muted">Sin actividad registrada.</p> : (
-          <ul className="text-sm">{acts.map((a) => <li key={a.id}>{a.createdAt.toLocaleString("es-CO")} — {a.type === "whatsapp_opened" ? "Se abrió WhatsApp (envío no confirmado)" : a.type}</li>)}</ul>)}
+          <ul className="text-sm">{acts.map((a) => <li key={a.id}>{a.createdAt.toLocaleString("es-CO")} — {actLabel(a)}</li>)}</ul>)}
       </section>
     </div>
   );

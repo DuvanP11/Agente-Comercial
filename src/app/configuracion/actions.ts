@@ -1,7 +1,7 @@
 "use server";
 import { revalidatePath } from "next/cache";
 import { ensureDefaultOrg, getDb } from "@/lib/db/client";
-import { resetScoringConfig, saveScoringConfig } from "@/lib/services/settings";
+import { resetScoringConfig, saveContactRules, saveScoringConfig } from "@/lib/services/settings";
 
 export interface ConfigState { ok?: string; error?: string }
 
@@ -21,4 +21,13 @@ export async function resetScoringAction(): Promise<ConfigState> {
     revalidatePath("/configuracion"); revalidatePath("/analizar", "layout"); revalidatePath("/prospectos", "layout");
     return { ok: `Valores de arranque restaurados (${r.recalculated} prospecto(s) recalculado(s)).` };
   } catch (e) { return { error: e instanceof Error ? e.message : "No se pudo restaurar." }; }
+}
+
+export async function saveContactRulesAction(maxAttempts: number): Promise<ConfigState> {
+  try {
+    const db = await getDb();
+    const r = await saveContactRules(db, await ensureDefaultOrg(db), { maxAttempts }, "usuario");
+    revalidatePath("/configuracion"); revalidatePath("/prospectos", "layout");
+    return { ok: `Guardado: máximo ${r.maxAttempts} intento${r.maxAttempts === 1 ? "" : "s"} por prospecto. Se aplica desde ahora, también a los que ya estaban contactados.` };
+  } catch (e) { return { error: e instanceof Error ? e.message : "No se pudo guardar." }; }
 }

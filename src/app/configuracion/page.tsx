@@ -1,18 +1,21 @@
 import Link from "next/link";
 import { ensureDefaultOrg, getDb } from "@/lib/db/client";
-import { getScoringConfig } from "@/lib/services/settings";
+import { getContactRules, getScoringConfig } from "@/lib/services/settings";
+import { ContactRulesForm } from "./ContactRulesForm";
 import { ScoringForm } from "./ScoringForm";
 
 export const dynamic = "force-dynamic";
 
 export default async function Configuracion() {
   const db = await getDb();
-  const cfg = await getScoringConfig(db, await ensureDefaultOrg(db));
+  const org = await ensureDefaultOrg(db);
+  const cfg = await getScoringConfig(db, org), rules = await getContactRules(db, org);
   return (
     <div className="space-y-4">
       <header><h1 className="text-2xl font-bold">Configuración</h1>
         <p className="text-sm text-muted">Ajustes de la plataforma que cambian cómo se calcula y se muestra la información.</p></header>
       <ScoringForm weights={cfg.weights} minCoverage={cfg.minCoverage} />
+      <ContactRulesForm maxAttempts={rules.maxAttempts} />
       <section className="card text-sm space-y-1" aria-label="Otros ajustes">
         <h2 className="font-semibold">Otros ajustes</h2>
         <p>Colores y marca: <Link className="underline" href="/apariencia">Apariencia y marca</Link>.</p>

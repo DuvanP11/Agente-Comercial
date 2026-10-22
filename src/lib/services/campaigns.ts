@@ -7,6 +7,7 @@ import {
   type CpStatus,
 } from "../campaigns";
 import type { Db } from "../db/client";
+import { assertCanContact, registerAttempt, syncOutcomeFromCampaign } from "./contact-tracking";
 import { activities, auditLog, campaignProspects, campaigns, messages, prospects } from "../db/schema";
 
 const campaignInput = z.object({
@@ -116,6 +117,7 @@ export async function setCpStatus(db: Db, orgId: string, cpId: string, status: s
     nextFollowUpAt: CLOSED_STATUSES.includes(to) ? null : cp.nextFollowUpAt, // cerrado = sin seguimiento
   }).where(eq(campaignProspects.id, cpId));
   await db.insert(activities).values({ orgId, prospectId: p.id, type: "campaign_status", actor, detail: { campaignId: cp.campaignId, cpId, from, to } });
+  await syncOutcomeFromCampaign(db, orgId, p.id, to);
   if (to === "do_not_contact") await setDoNotContact(db, orgId, p.id, true, "Solicitó no ser contactado (campaña)", actor);
 }
 
@@ -169,6 +171,7 @@ export async function openWhatsApp(db: Db, orgId: string, cpId: string, actor: s
   if (c.status === "closed") throw new Error("La campaña está cerrada.");
   if (p.doNotContact) throw new Error("Este prospecto pidió no ser contactado.");
   if (CLOSED_STATUSES.includes(cp.status as CpStatus)) throw new Error("La gestión de este prospecto está cerrada.");
+  await assertCanContact(db, orgId, p); // no interesado o intentos agotados
   const e164 = normalizePhone(p.phone);
   if (!e164) throw new Error("El prospecto no tiene un teléfono válido. Complétalo en su ficha.");
   const [m] = await db.select().from(messages).where(and(eq(messages.campaignId, cp.campaignId), eq(messages.prospectId, p.id), eq(messages.status, "approved")));
@@ -185,6 +188,7 @@ export async function openWhatsApp(db: Db, orgId: string, cpId: string, actor: s
   const url = whatsappLink(e164, m.body);
   if (!url) throw new Error("Número inválido para WhatsApp.");
   await db.insert(activities).values({ orgId, prospectId: p.id, type: "whatsapp_opened", actor, detail: { campaignId: cp.campaignId, cpId, messageId: m.id, note: "Se abrió el chat; el envío lo hace el usuario." } });
+  await registerAttempt(db, orgId, p.id, { channel: "whatsapp", activity: false }, actor);
   return { url };
 }
 

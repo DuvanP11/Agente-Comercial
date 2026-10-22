@@ -69,6 +69,12 @@ export const prospects = pgTable("prospects", {
   doNotContact: boolean("do_not_contact").notNull().default(false),
   doNotContactReason: text("do_not_contact_reason"),
   doNotContactAt: timestamp("do_not_contact_at", { withTimezone: true }),
+  /** Gestión de contacto: pending | contacted | no_answer | interested | not_interested. («Sin datos» y «agotado» se derivan, no se guardan.) */
+  contactOutcome: text("contact_outcome").notNull().default("pending"),
+  /** Veces que el equipo intentó contactarlo (cada WhatsApp abierto o intento registrado). */
+  contactAttempts: integer("contact_attempts").notNull().default(0),
+  lastAttemptAt: timestamp("last_attempt_at", { withTimezone: true }),
+  outcomeNote: text("outcome_note"),
   consultedAt: timestamp("consulted_at", { withTimezone: true }).notNull(),
   createdAt: ts("created_at"),
 }, (t) => [
@@ -241,5 +247,7 @@ export const orgSettings = pgTable("org_settings", {
   scoring: jsonb("scoring"),
   /** Guía de la empresa para los agentes de IA (módulo Entrenamiento). No reentrena ningún modelo. */
   training: jsonb("training"),
+  /** Reglas de contacto (máximo de intentos antes de dar el prospecto por agotado). */
+  contactRules: jsonb("contact_rules"),
   updatedAt: ts("updated_at"),
 });

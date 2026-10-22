@@ -5,6 +5,8 @@ import { ensureDefaultOrg, getDb } from "@/lib/db/client";
 import { activities, messages, prospects } from "@/lib/db/schema";
 import { resolveReview } from "@/lib/services/prospects";
 import { updateContact } from "@/lib/services/prospect-contact";
+import { assertCanContact, registerAttempt, setOutcome } from "@/lib/services/contact-tracking";
+import { isChannel } from "@/lib/contact-tracking";
 import { whatsappLink } from "@/lib/contact-links";
 
 export async function resolveDuplicate(reviewId: string, decision: "excluded" | "linked" | "not_duplicate", prospectId: string) {
@@ -19,11 +21,13 @@ export async function openWhatsApp(prospectId: string, body: string): Promise<{ 
   const [p] = await db.select().from(prospects).where(eq(prospects.id, prospectId));
   if (!p || !p.phoneKey) return { error: "El prospecto no tiene un teléfono con formato válido." };
   if (p.doNotContact) return { error: "Este prospecto pidió no ser contactado." };
+  try { await assertCanContact(db, org, p); } catch (e) { return { error: e instanceof Error ? e.message : "No se puede contactar." }; }
   const url = whatsappLink(p.phoneKey, body);
   if (!url) return { error: "Número inválido para WhatsApp." };
   if (!body.trim()) return { error: "El mensaje está vacío." };
   const [m] = await db.insert(messages).values({ orgId: org, prospectId, channel: "whatsapp", body, status: "draft" }).returning();
   await db.insert(activities).values({ orgId: org, prospectId, type: "whatsapp_opened", actor: "usuario", detail: { messageId: m.id, note: "Se abrió el chat; el envío lo hace el usuario." } });
+  await registerAttempt(db, org, prospectId, { channel: "whatsapp", activity: false }, "usuario");
   revalidatePath(`/prospectos/${prospectId}`);
   return { url };
 }
@@ -41,4 +45,26 @@ export async function saveContact(prospectId: string, _: ContactState, fd: FormD
   } catch (e) {
     return { error: e instanceof Error ? e.message : "No se pudo guardar." };
   }
+}
+
+export interface ManageState { ok?: string; error?: string }
+
+/** Registra un intento de contacto hecho fuera de la app (llamada, correo, visita) o por WhatsApp. */
+export async function registerAttemptAction(prospectId: string, channel: string, note: string): Promise<ManageState> {
+  try {
+    if (!isChannel(channel)) return { error: "Canal no válido." };
+    const db = await getDb();
+    const st = await registerAttempt(db, await ensureDefaultOrg(db), prospectId, { channel, note }, "usuario");
+    revalidatePath(`/prospectos/${prospectId}`); revalidatePath("/prospectos");
+    return { ok: st.key === "exhausted" ? "Intento registrado. Fue el último permitido: el prospecto queda como agotado si no responde." : `Intento registrado. Quedan ${st.attemptsLeft}.` };
+  } catch (e) { return { error: e instanceof Error ? e.message : "No se pudo registrar." }; }
+}
+
+export async function setOutcomeAction(prospectId: string, outcome: string, note: string): Promise<ManageState> {
+  try {
+    const db = await getDb();
+    await setOutcome(db, await ensureDefaultOrg(db), prospectId, outcome, note, "usuario");
+    revalidatePath(`/prospectos/${prospectId}`); revalidatePath("/prospectos");
+    return { ok: "Resultado guardado." };
+  } catch (e) { return { error: e instanceof Error ? e.message : "No se pudo guardar." }; }
 }
