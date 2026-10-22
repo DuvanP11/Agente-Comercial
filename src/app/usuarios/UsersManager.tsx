@@ -75,8 +75,8 @@ export function UsersManager({ rows, meId, canManage }: { rows: Row[]; meId: str
                       <div className="mt-2 grid gap-2 md:grid-cols-3">
                         <div><label className="label" htmlFor={`e-p-${u.id}`}>WhatsApp del Hunter</label><input id={`e-p-${u.id}`} className="input" inputMode="tel" placeholder="3001234567" value={draft.phone} onChange={(e) => setDraft({ ...draft, phone: e.target.value })} />
                           <p className="text-xs text-muted">A este número Bix redirige al cliente interesado.</p></div>
-                        <div><label className="label" htmlFor={`e-c-${u.id}`}>ID de Google Chat</label><input id={`e-c-${u.id}`} className="input" inputMode="numeric" placeholder="solo números" value={draft.chatUserId} onChange={(e) => setDraft({ ...draft, chatUserId: e.target.value })} />
-                          <p className="text-xs text-muted">Para arrobarlo en el espacio de leads. Sin él, solo se escribe su nombre.</p></div>
+                        <div><label className="label" htmlFor={`e-c-${u.id}`}>ID de Google Chat (opcional)</label><input id={`e-c-${u.id}`} className="input" inputMode="numeric" placeholder="solo números" value={draft.chatUserId} onChange={(e) => setDraft({ ...draft, chatUserId: e.target.value })} />
+                          <p className="text-xs text-muted">No hace falta: Bix lo arroba con su correo ({u.email}). Úsalo solo si su correo de Google Chat es otro.</p></div>
                         <label className="flex items-center gap-2 self-center text-sm font-semibold"><input type="checkbox" checked={draft.receivesLeads} onChange={(e) => setDraft({ ...draft, receivesLeads: e.target.checked })} /> Recibe leads de Bix (rotación)</label>
                       </div>
                     </div>

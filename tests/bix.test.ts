@@ -58,9 +58,9 @@ describe("Google Chat", () => {
     for (const bad of ["http://chat.googleapis.com/v1/spaces/A", "https://evil.com/v1/spaces/A", "https://chat.googleapis.com/otra", "no es url"]) expect(() => validateChatWebhook(bad)).toThrow();
   });
   it("el aviso trae rango, nombre, teléfono, correo, respuestas y arroba al Hunter", () => {
-    const t = buildLeadMessage({ interest: 82, name: "Jaime", business: "Librería X", phone: "573154051883", email: "j@x.co", city: "Bogotá", category: "librería", answers: [{ q: "¿Envían pedidos?", a: "sí, 20 al día" }], hunter: { name: "Yuly González", chatUserId: "100001" } });
+    const t = buildLeadMessage({ interest: 82, name: "Jaime", business: "Librería X", phone: "573154051883", email: "j@x.co", city: "Bogotá", category: "librería", answers: [{ q: "¿Envían pedidos?", a: "sí, 20 al día" }], hunter: { name: "Yuly González", email: "yuly@pibox.app", chatUserId: "100001" } });
     expect(t).toMatch(/Interés \*ALTO\* \(82\/100\)/); expect(t).toContain("<users/100001>"); expect(t).toContain("+573154051883"); expect(t).toContain("j@x.co"); expect(t).toContain("sí, 20 al día");
-    expect(buildLeadMessage({ interest: 10, name: "A", business: "A", phone: "57300", email: null, city: null, category: null, answers: [], hunter: { name: "Natalia", chatUserId: null } })).toMatch(/\*Natalia\*/);
+    expect(buildLeadMessage({ interest: 10, name: "A", business: "A", phone: "57300", email: null, city: null, category: null, answers: [], hunter: { name: "Natalia", email: "natalia@pibox.app", chatUserId: null } })).toContain("<users/natalia@pibox.app> (Natalia)");
     expect([interestRange(70), interestRange(69), interestRange(40), interestRange(39)]).toEqual(["Alto", "Medio", "Medio", "Bajo"]);
   });
   it("un fallo del webhook se informa", async () => { await expect(postToChat(HOOK, "x", net({ chatStatus: 404 }).fetchImpl)).rejects.toThrow(/rechazó el webhook/); });

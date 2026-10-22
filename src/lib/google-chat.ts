@@ -12,13 +12,14 @@ const ICON: Record<InterestRange, string> = { Alto: "🔥", Medio: "🟡", Bajo:
 
 export interface LeadNote {
   interest: number; name: string; business: string; phone: string; email: string | null; city: string | null; category: string | null;
-  answers: { q: string; a: string }[]; hunter: { name: string; chatUserId: string | null }; summary?: string | null;
+  answers: { q: string; a: string }[]; hunter: { name: string; email: string; chatUserId: string | null }; summary?: string | null;
 }
 const clean = (s: string) => s.replace(/[*_`~<>]/g, "").replace(/\s+/g, " ").trim().slice(0, 240);
-/** Texto del aviso. Arroba al Hunter con <users/ID> (formato de Google Chat); si no tiene ID, solo escribe su nombre. */
+/** Texto del aviso. Arroba al Hunter con <users/CORREO> (Google Chat acepta el correo de Workspace en lugar del ID); si se registró un ID, ese manda. */
 export function buildLeadMessage(n: LeadNote): string {
   const r = interestRange(n.interest);
-  const who = n.hunter.chatUserId ? `<users/${n.hunter.chatUserId.replace(/[^0-9A-Za-z_-]/g, "")}>` : `*${clean(n.hunter.name)}*`;
+  const key = (n.hunter.chatUserId?.trim() || n.hunter.email.trim()).replace(/[^0-9A-Za-z_.@+-]/g, "");
+  const who = key ? `<users/${key}> (${clean(n.hunter.name)})` : `*${clean(n.hunter.name)}*`;
   const phone = n.phone.replace(/\D/g, "");
   const lines = [
     `${ICON[r]} *Nuevo lead de Bix* · Interés *${r.toUpperCase()}* (${n.interest}/100)`,

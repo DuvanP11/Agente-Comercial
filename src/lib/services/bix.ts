@@ -65,7 +65,7 @@ export async function readiness(db: Db, orgId: string, provider: AiProvider | nu
     { key: "ai", label: "La IA está conectada", ok: !!provider, detail: provider ? "Proveedor de IA configurado." : "Falta configurar la IA (ver Integraciones).", needed: "ready" },
     { key: "training", label: "Bix está entrenado", ok: (lessons?.n ?? 0) > 0 || !!guidance, detail: `${lessons?.n ?? 0} lección(es) activa(s) del laboratorio${guidance ? " y guía escrita" : ""}. Entrénalo en el Laboratorio de conversación hasta que converse como quieres.`, needed: "ready" },
     { key: "chat", label: "El espacio de Google Chat está conectado", ok: !!chat, detail: chat ? "Webhook guardado." : "Pega el webhook del espacio donde se avisarán los leads.", needed: "ready" },
-    { key: "hunters", label: "Hay Hunters en la rotación", ok: hunters.length > 0, detail: hunters.length ? `${hunters.length} Hunter(s): ${hunters.map((h) => h.name).join(", ")}.` : "En Usuarios, marca «Recibe leads de Bix» y registra el WhatsApp de al menos un Hunter.", needed: "ready" },
+    { key: "hunters", label: "Hay Hunters en la rotación", ok: hunters.length > 0, detail: hunters.length ? `${hunters.length} Hunter(s): ${hunters.map((h) => h.name).join(", ")}.` : "En Usuarios, marca «Recibe leads de Bix» y registra el WhatsApp de al menos un Hunter (se le arroba con su correo corporativo).", needed: "ready" },
     { key: "whatsapp", label: "WhatsApp Business está conectado", ok: missing.length === 0, detail: missing.length ? `Faltan variables en Vercel: ${missing.join(", ")}. Sin esto Bix no puede escribirle a nadie.` : "Credenciales presentes (no probadas con Meta hasta el primer envío).", needed: "send" },
   ];
   return { items, canMarkReady: items.filter((i) => i.needed === "ready").every((i) => i.ok), canSend: items.every((i) => i.ok), hunters };
@@ -256,9 +256,9 @@ export async function notifyChat(db: Db, convId: string, deps: BixDeps = {}): Pr
   try {
     const url = await getChatWebhook(db, c.orgId); if (!url) throw new Error("Falta el webhook de Google Chat.");
     const [p] = await db.select().from(prospects).where(eq(prospects.id, c.prospectId));
-    const [h] = await db.select({ name: users.name, chatUserId: users.chatUserId }).from(users).where(eq(users.id, c.assignedUserId));
+    const [h] = await db.select({ name: users.name, email: users.email, chatUserId: users.chatUserId }).from(users).where(eq(users.id, c.assignedUserId));
     const text = buildLeadMessage({ interest: c.interest ?? 0, name: p?.name ?? c.businessName, business: c.businessName, phone: c.phone, email: p?.email ?? null, city: p?.city ?? null, category: p?.category ?? null,
-      answers: (c.answers as { q: string; a: string }[] | null) ?? [], hunter: { name: h?.name ?? c.assignedName ?? "Hunter", chatUserId: h?.chatUserId ?? null } });
+      answers: (c.answers as { q: string; a: string }[] | null) ?? [], hunter: { name: h?.name ?? c.assignedName ?? "Hunter", email: h?.email ?? "", chatUserId: h?.chatUserId ?? null } });
     await postToChat(url, text, f(deps));
     await db.update(bixConversations).set({ chatNotifiedAt: nowOf(deps), chatError: null }).where(eq(bixConversations.id, convId));
     return { ok: true };
