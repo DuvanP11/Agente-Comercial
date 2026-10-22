@@ -3,6 +3,8 @@ import { authConfigured } from "@/lib/auth";
 import { aiStatus } from "@/lib/ai/provider";
 import { GoogleCheck } from "./GoogleCheck";
 
+const NO_KEY = new Set(["openstreetmap", "business_directory"]); // fuentes públicas: no usan clave
+
 export const dynamic = "force-dynamic";
 
 export default function Integraciones() {
@@ -28,8 +30,8 @@ export default function Integraciones() {
                 {ai.warnings.map((w) => <span key={w} className="mt-1 block badge-warn">⚠ {w}</span>)}</td></tr>
             {rows.map((r) => (
               <tr key={r.id}><td>{r.label}</td>
-                <td><span className={`badge ${r.status.state === "connected" ? "badge-ok" : "badge-warn"}`}>{r.status.state === "connected" ? "Clave presente (no probada)" : r.status.state === "not_configured" ? "Pendiente" : "Error"}</span></td>
-                <td className="text-sm">{r.status.state === "not_configured" ? `Falta ${r.status.missing.join(", ")}. ${r.status.howTo}` : r.status.state === "error" ? r.status.message : "La clave existe; el primer uso real confirma si es válida."}</td></tr>
+                <td><span className={`badge ${r.status.state === "connected" ? "badge-ok" : "badge-warn"}`}>{r.status.state === "connected" ? (NO_KEY.has(r.id) ? "Disponible (sin clave)" : "Clave presente (no probada)") : r.status.state === "not_configured" ? "Pendiente" : "Error"}</span></td>
+                <td className="text-sm">{r.status.state === "not_configured" ? `Falta ${r.status.missing.join(", ")}. ${r.status.howTo}` : r.status.state === "error" ? r.status.message : NO_KEY.has(r.id) ? (r.id === "business_directory" ? "Datos abiertos del Registro Mercantil (Confecámaras, datos.gov.co). No requiere clave; trae empresas y NIT, sin teléfono ni correo." : "Servicio público gratuito; a veces tarda o se satura.") : "La clave existe; el primer uso real confirma si es válida."}</td></tr>
             ))}
             {PENDING_CONNECTORS.map((c) => (
               <tr key={c.id}><td>{c.label}</td><td><span className="badge">No implementado</span></td><td className="text-sm">{c.why}</td></tr>

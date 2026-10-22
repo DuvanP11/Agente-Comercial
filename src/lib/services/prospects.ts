@@ -53,7 +53,7 @@ export async function ingestProspects(db: Db, orgId: string, raws: RawProspect[]
   for (const raw of raws) {
     const candidate: CompanyRecord = {
       id: "candidate", origin: "prospect", name: raw.name, website: raw.website, phone: raw.phone,
-      email: raw.email, address: raw.address, city: raw.city, sourceId: raw.sourceId,
+      email: raw.email, address: raw.address, city: raw.city, sourceId: raw.sourceId, nit: raw.nit,
     };
     const matches = findDuplicates(candidate, refs);
     const top = matches[0];
@@ -77,18 +77,18 @@ export async function ingestProspects(db: Db, orgId: string, raws: RawProspect[]
 
     // Evidencia por cada dato que el conector sí entregó. "Observado en la fuente", no "verificado".
     const ref = raw.sourceUrl ?? `${raw.sourceName}:${raw.sourceId ?? ""}`;
-    const observed = ([["name", raw.name], ["address", raw.address], ["phone", raw.phone], ["website", raw.website]] as const)
+    const observed = ([["name", raw.name], ["address", raw.address], ["phone", raw.phone], ["website", raw.website], ["nit", raw.nit]] as const)
       .filter(([, v]) => !!v);
     await db.insert(evidence).values(observed.map(([field, value]) => ({
       orgId, entityType: "prospect", entityId: row.id, field, observedValue: value!, sourceRef: ref,
       sourceName: raw.sourceName, method: raw.method ?? "api", observedAt: raw.consultedAt, verification: "source_observed",
-      limitations: raw.limitations ?? (raw.isDemo ? "Dato de demostración" : raw.method === "csv_import" ? "Dato tomado de un archivo cargado por el usuario; no verificado de forma independiente." : "Dato publicado por la fuente; no verificado de forma independiente."),
+      limitations: raw.limitations ?? (raw.isDemo ? "Dato de demostración" : raw.method === "csv_import" ? "Dato tomado de un archivo cargado por el usuario; no verificado de forma independiente." : raw.method === "manual" ? "Dato escrito a mano por el usuario a partir de una fuente que consultó él mismo." : "Dato publicado por la fuente; no verificado de forma independiente."),
     })));
 
     // Los siguientes elementos del mismo lote también se comparan contra este.
     refs.push({
       refType: "prospect", id: row.id, origin: "prospect", name: raw.name, website: raw.website,
-      phone: raw.phone, email: raw.email, address: raw.address, city: raw.city, sourceId: raw.sourceId,
+      phone: raw.phone, email: raw.email, address: raw.address, city: raw.city, sourceId: raw.sourceId, nit: raw.nit,
     });
 
     if (top) {

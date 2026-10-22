@@ -10,6 +10,17 @@ const FIELD = { nit: "NIT", source_id: "ID de la fuente", domain: "web", phone: 
 const Dash = () => <span className="text-muted">No disponible</span>;
 
 /** Tabla de resultados: todo lo que se sabe de cada empresa y, si hay duplicado, con quién coincide y por qué. */
+/** Texto del enlace a la fuente según de dónde viene el dato (antes decía «OpenStreetMap» para todo). */
+export function sourceLabel(url: string): string {
+  let host = "";
+  try { host = new URL(url).hostname.toLowerCase(); } catch { return "Ver fuente"; }
+  if (host.endsWith("openstreetmap.org")) return "Ver en OpenStreetMap";
+  if (host.endsWith("datos.gov.co")) return "Ver registro (datos abiertos)";
+  if (host.endsWith("linkedin.com")) return "Ver en LinkedIn";
+  if (host.endsWith("google.com") || host.endsWith("goo.gl")) return "Ver en Google Maps";
+  return "Ver fuente";
+}
+
 export function OutcomeTable({ outcomes, searchId, readings }: { outcomes: IngestOutcome[]; searchId?: string; readings?: Record<string, Reading> }) {
   const ficha = (id: string) => (searchId ? `/prospectos/${id}?from=${searchId}` : `/prospectos/${id}`);
   return (
@@ -27,7 +38,7 @@ export function OutcomeTable({ outcomes, searchId, readings }: { outcomes: Inges
               {o.website && o.email ? <br /> : null}
               {o.email && (mailtoLink(o.email) ? <a className="break-all underline" href={mailtoLink(o.email)!}>{o.email}</a> : <span className="break-all">{o.email}</span>)}
             </> : <Dash />}</td>
-            <td>{o.sourceUrl && /^https?:\/\//.test(o.sourceUrl) ? <a className="underline" target="_blank" rel="noopener noreferrer" href={o.sourceUrl}>Ver en OpenStreetMap</a> : <span className="text-sm">{o.sourceUrl ?? "—"}</span>}</td>
+            <td>{o.sourceUrl && /^https?:\/\//.test(o.sourceUrl) ? <a className="underline" target="_blank" rel="noopener noreferrer" href={o.sourceUrl}>{sourceLabel(o.sourceUrl)}</a> : <span className="text-sm">{o.sourceUrl ?? "—"}</span>}</td>
             <td className="min-w-64">
               <span className={`badge ${BADGE[o.status]}`}>{LABEL[o.status]}</span>
               {o.message && <p className="mt-1 text-sm">{o.message}</p>}

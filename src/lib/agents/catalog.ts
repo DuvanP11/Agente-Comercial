@@ -9,8 +9,8 @@ export interface CatalogItem { n: number; name: string; how: string; status: Mat
 export const AGENTS: CatalogItem[] = [
   { n: 1, name: "Investigación de mercado", how: "Reglas", status: "partial", ai: false, detail: "Inteligencia de mercado: conteos y embudo por rubro, ciudad y fuente. Sin análisis con IA." },
   { n: 2, name: "Búsqueda geográfica", how: "Conectores", status: "ready", ai: false, detail: "OpenStreetMap (gratis) y Google Places (con clave)." },
-  { n: 3, name: "Fuentes profesionales (LinkedIn)", how: "—", status: "pending", ai: false, detail: "Requiere una integración autorizada por LinkedIn." },
-  { n: 4, name: "Directorios empresariales", how: "—", status: "pending", ai: false, detail: "Falta elegir un proveedor autorizado." },
+  { n: 3, name: "Fuentes profesionales (LinkedIn)", how: "Asistido por la persona", status: "partial", ai: false, detail: "LinkedIn no permite extraer sus datos automáticamente ni tiene API pública de búsqueda. En Buscar clientes se generan los enlaces de búsqueda y se capturan a mano las empresas que encuentres (con su enlace como fuente). Sales Navigator: exporta y usa Importar." },
+  { n: 4, name: "Directorios empresariales", how: "Conector", status: "ready", ai: false, detail: "Registro Mercantil (RUES, datos abiertos de Confecámaras): empresas con matrícula activa por actividad y ciudad, con NIT. No trae teléfono ni correo. Páginas Amarillas y otros directorios: no se usan porque sus condiciones no permiten extraer datos." },
   { n: 5, name: "Enriquecimiento de datos", how: "Manual", status: "partial", ai: false, detail: "Completar contacto a mano en la ficha. Enriquecimiento automático: pendiente." },
   { n: 6, name: "Deduplicación", how: "Reglas", status: "ready", ai: false, detail: "Motor determinista: exacta y probable, con revisión humana." },
   { n: 7, name: "Calificación comercial", how: "IA propone + código valida", status: "ready", ai: true, detail: "Botón «Proponer con IA» en Analizar. La IA propone la valoración; el código degrada lo no demostrable y decide el canal de contacto. Nada se guarda sin tu aprobación." },

@@ -41,6 +41,8 @@ export function SearchHelp() {
             <li><b>Se ve:</b> nombre, categoría, dirección y, cuando existen en la fuente, teléfono, sitio web y correo. Cada dato queda con su fuente y la fecha de consulta.</li>
             <li><b>No se ve:</b> tamaño del negocio, volumen de envíos, horarios, calificaciones, redes sociales ni si necesita mensajería. Eso se valora después, con evidencia, en Analizar clientes.</li>
             <li><b>OpenStreetMap</b> (gratis) es información colaborativa: encuentra bien nombre y dirección, pero pocos negocios traen teléfono o web. Su servidor público a veces tarda o se satura; la app prueba con otro servidor y avisa si no pudo.</li>
+            <li><b>Directorio empresarial (RUES)</b> (gratis) trae empresas con matrícula activa del Registro Mercantil, su actividad y su NIT, pero <b>sin teléfono, correo, web ni dirección</b>; no usa zonas. Sirve para descubrir negocios y detectar si ya son clientes.</li>
+            <li><b>LinkedIn</b> no se puede consultar automáticamente: usa el bloque «Fuentes profesionales» para abrir la búsqueda y guardar a mano lo que encuentres.</li>
             <li><b>Google Places</b> trae más teléfonos y webs, pero requiere clave y cobra por consulta.</li>
             <li>Lo que no aparece como dato nunca se inventa: queda vacío. «Sin teléfono» significa que la fuente no lo trae, no que el negocio no tenga.</li>
           </ul>

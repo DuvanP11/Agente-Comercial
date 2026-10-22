@@ -26,8 +26,10 @@ export interface RawProspect {
   sourceUrl: string | null;
   consultedAt: Date;
   isDemo: boolean;
+  /** NIT (con dígito de verificación si lo trae la fuente): sirve para detectar que ya es cliente. */
+  nit?: string | null;
   /** Cómo se obtuvo el dato; por defecto 'api'. */
-  method?: "api" | "csv_import";
+  method?: "api" | "csv_import" | "manual";
   /** Salvedad propia de la fuente (atribución, calidad). Si falta, se usa la genérica. */
   limitations?: string;
 }

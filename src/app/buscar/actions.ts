@@ -1,6 +1,8 @@
 "use server";
 import { eq } from "drizzle-orm";
 import { getConnectors } from "@/lib/connectors/registry";
+import { parseLinkedinCompanyUrl } from "@/lib/linkedin";
+import { ATTRIBUTION } from "@/lib/connectors/business-directory";
 import { hasContact, searchCriteria } from "@/lib/connectors/types";
 import { fewResultsNote } from "@/lib/search-form";
 import { ensureDefaultOrg, getDb } from "@/lib/db/client";
@@ -51,7 +53,7 @@ export async function runSearch(_: SearchState, fd: FormData): Promise<SearchSta
     const stored = outcomes.filter((o) => o.status !== "already_stored").length;
     const already = outcomes.length - stored;
     await db.update(searches).set({ status: "completed", resultCount: stored, finishedAt: new Date(), error: result.errors.join(" | ") || null }).where(eq(searches.id, s.id));
-    const message = `${result.prospects.length} resultados de ${connector.label}${parsed.data.requireContact ? " con teléfono, correo o web" : ""}: ${stored} nuevos guardados${already ? `, ${already} ya estaban guardados de antes` : ""}.${connector.id === "openstreetmap" ? " Datos © colaboradores de OpenStreetMap (ODbL)." : ""}`;
+    const message = `${result.prospects.length} resultados de ${connector.label}${parsed.data.requireContact ? " con teléfono, correo o web" : ""}: ${stored} nuevos guardados${already ? `, ${already} ya estaban guardados de antes` : ""}.${connector.id === "openstreetmap" ? " Datos © colaboradores de OpenStreetMap (ODbL)." : connector.id === "business_directory" ? ` ${ATTRIBUTION}` : ""}`;
     const notes = [...(found.notes ?? []), ...[fewResultsNote(parsed.data.zones, outcomes.length)].filter((x): x is string => !!x)];
     await saveSnapshot(db, s.id, { message, errors: result.errors, notes, items: outcomes }); // para poder volver desde una ficha
     return { status: "ok", outcomes, errors: result.errors, notes, message, searchId: s.id };
@@ -94,5 +96,31 @@ export async function analyzeResultsAction(prospectIds: string[]): Promise<Analy
   } catch (e) {
     console.error("analyzeResultsAction falló:", e);
     return { readings: [], analyzed: 0, cached: 0, pending: 0, error: "No se pudieron analizar los resultados." };
+  }
+}
+
+
+export interface ManualState { ok?: string; error?: string; outcome?: IngestOutcome }
+
+/** Guarda una empresa que la persona encontró y copió a mano de LinkedIn. La fuente es su enlace; no se extrae nada de LinkedIn. */
+export async function addLinkedinProspectAction(_: ManualState, fd: FormData): Promise<ManualState> {
+  try {
+    const name = String(fd.get("name") ?? "").trim().slice(0, 160);
+    if (name.length < 2) return { error: "Escribe el nombre de la empresa." };
+    const url = parseLinkedinCompanyUrl(String(fd.get("url") ?? ""));
+    if (!url) return { error: "El enlace debe ser de una página de empresa de LinkedIn (https://www.linkedin.com/company/…)." };
+    const clean = (k: string, max: number) => String(fd.get(k) ?? "").trim().slice(0, max) || null;
+    const db = await getDb();
+    const org = await ensureDefaultOrg(db);
+    const [o] = await ingestProspects(db, org, [{
+      name, category: clean("category", 80), website: clean("website", 200), phone: clean("phone", 60), email: clean("email", 120), address: null, city: clean("city", 80),
+      sourceName: "linkedin_manual", sourceId: url.toLowerCase(), sourceUrl: url, consultedAt: new Date(), isDemo: false, method: "manual",
+      limitations: "Empresa copiada a mano por el usuario desde su página de LinkedIn. No se extrajo nada automáticamente; los datos no están verificados.",
+    }]);
+    if (!o) return { error: "No se pudo guardar." };
+    return o.status === "already_stored" ? { ok: "Esa página de LinkedIn ya estaba guardada.", outcome: o } : { ok: o.message ?? "Empresa guardada como prospecto.", outcome: o };
+  } catch (e) {
+    console.error("addLinkedinProspectAction falló:", e);
+    return { error: "No se pudo guardar la empresa." };
   }
 }
