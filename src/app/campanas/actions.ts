@@ -6,6 +6,7 @@ import { ensureDefaultOrg, getDb } from "@/lib/db/client";
 import { providerFromEnv } from "@/lib/ai/provider";
 import { draftForCampaignProspect } from "@/lib/services/agents";
 import { track } from "@/lib/track";
+import { sendCampaignBatch, sendCampaignEmail, type SendOptions, type SendResult } from "@/lib/services/gmail";
 import { guardCampaign } from "@/lib/guard";
 import { requireUser } from "@/lib/session";
 import { viewerOf } from "@/lib/services/scope";
@@ -109,7 +110,7 @@ export async function aiDraftAction(campaignId: string, cpId: string, revision: 
   }
 }
 
-export async function updateCampaignAction(campaignId: string, input: { name: string; objective: string; valueProposition: string; template: string }): Promise<ActionResult> {
+export async function updateCampaignAction(campaignId: string, input: { name: string; objective: string; valueProposition: string; template: string; emailSubject?: string }): Promise<ActionResult> {
   return (await run(campaignId, async (db, org) => { await updateCampaign(db, org, campaignId, input, ACTOR); return { ok: "Campaña actualizada. Los mensajes ya generados no cambian: usa «Generar desde la plantilla» en cada prospecto para actualizarlos." } as ActionResult; }, "Editó una campaña")) as ActionResult;
 }
 export async function setCoverAction(campaignId: string, dataUrl: string | null): Promise<ActionResult> {
@@ -117,4 +118,30 @@ export async function setCoverAction(campaignId: string, dataUrl: string | null)
 }
 export async function deleteAttachmentAction(campaignId: string, attachmentId: string): Promise<ActionResult> {
   return (await run(campaignId, async (db, org) => { await deleteAttachment(db, org, campaignId, attachmentId, ACTOR); return { ok: "Archivo eliminado." } as ActionResult; }, "Eliminó un archivo de una campaña")) as ActionResult;
+}
+
+
+const cleanOpts = (o: SendOptions): SendOptions => ({ attachmentIds: Array.isArray(o.attachmentIds) ? o.attachmentIds.filter((x) => typeof x === "string").slice(0, 12) : [], inlineImages: !!o.inlineImages, optOut: o.optOut !== false, allowRepeat: !!o.allowRepeat });
+
+/** Envía UN correo (el mensaje aprobado de ese prospecto) desde el Gmail de quien tiene sesión. */
+export async function gmailSendOneAction(campaignId: string, cpId: string, opts: SendOptions): Promise<SendResult> {
+  try {
+    const me = await guardCampaign(campaignId);
+    const { db, org } = await ctx();
+    const r = await sendCampaignEmail(db, org, { id: me.id, email: me.email, name: me.name }, cpId, cleanOpts(opts));
+    if (r.ok) { await track("action", "Envió un correo desde su Gmail (campaña)", { campana: campaignId }, `/campanas/${campaignId}`); revalidatePath(`/campanas/${campaignId}`); }
+    return r;
+  } catch (e) { return { cpId, ok: false, error: e instanceof Error ? e.message : "No se pudo enviar." }; }
+}
+
+/** Una tanda (máx. 8) de un envío masivo. El navegador repite la llamada hasta terminar y muestra el avance. */
+export async function gmailSendBatchAction(campaignId: string, cpIds: string[], opts: SendOptions): Promise<{ results: SendResult[]; error?: string }> {
+  try {
+    const me = await guardCampaign(campaignId);
+    const { db, org } = await ctx();
+    const results = await sendCampaignBatch(db, org, { id: me.id, email: me.email, name: me.name }, campaignId, Array.isArray(cpIds) ? cpIds.filter((x) => typeof x === "string") : [], cleanOpts(opts));
+    const okN = results.filter((r) => r.ok).length;
+    if (okN) { await track("action", `Envió ${okN} correo(s) desde su Gmail (campaña)`, { campana: campaignId, enviados: okN, fallidos: results.length - okN }, `/campanas/${campaignId}`); revalidatePath(`/campanas/${campaignId}`); }
+    return { results };
+  } catch (e) { return { results: [], error: e instanceof Error ? e.message : "No se pudo enviar." }; }
 }

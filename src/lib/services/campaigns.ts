@@ -16,6 +16,7 @@ const campaignInput = z.object({
   objective: z.string().trim().max(500).optional(),
   valueProposition: z.string().trim().max(1000).optional(),
   template: z.string().trim().min(10, "La plantilla del mensaje es muy corta.").max(1500),
+  emailSubject: z.string().trim().max(150).optional(),
 });
 
 export async function createCampaign(db: Db, orgId: string, raw: unknown, actor: string, ownerId?: string) {
@@ -43,6 +44,7 @@ export async function updateCampaign(db: Db, orgId: string, id: string, raw: unk
   const v = parsed.data;
   await db.update(campaigns).set({
     ...(v.name !== undefined ? { name: v.name } : {}), ...(v.template !== undefined ? { template: v.template } : {}),
+    ...(v.emailSubject !== undefined ? { emailSubject: v.emailSubject || null } : {}),
     ...(v.objective !== undefined ? { objective: v.objective || null } : {}), ...(v.valueProposition !== undefined ? { valueProposition: v.valueProposition || null } : {}),
   }).where(eq(campaigns.id, id));
   await db.insert(auditLog).values({ orgId, actor, action: "campaign.update", entity: id });

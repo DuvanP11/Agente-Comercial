@@ -6,14 +6,14 @@ import { phoneLinks } from "@/lib/contact-links";
 import { WhatsAppPreview } from "@/components/WhatsAppPreview";
 import { attUrl, copyImage, type Att } from "./AttachmentsPanel";
 import {
-  aiDraftAction, approveAction, doNotContactAction, draftAction, followUpAction, emailAction, generateAction, statusAction, whatsappAction, type ActionResult,
+  aiDraftAction, approveAction, doNotContactAction, draftAction, followUpAction, emailAction, generateAction, gmailSendOneAction, statusAction, whatsappAction, type ActionResult,
 } from "../actions";
 
 export interface RowProps {
   campaignId: string; cpId: string; closed: boolean;
   p: { id: string; name: string; phone: string | null; email?: string | null; city: string | null; doNotContact: boolean };
   status: string; followUpDate: string; notes: string; followUp: string;
-  message: { body: string; status: string } | null; opens: number; aiReady?: boolean; attachments?: Att[];
+  message: { body: string; status: string } | null; opens: number; aiReady?: boolean; attachments?: Att[]; gmailConnected?: boolean;
 }
 const FU: Record<string, [string, string]> = { overdue: ["Seguimiento vencido", "badge-bad"], today: ["Seguimiento hoy", "badge-warn"], upcoming: ["Seguimiento próximo", ""] };
 
@@ -26,6 +26,7 @@ export function ProspectRow(props: RowProps) {
   const [body, setBody] = useState(props.message?.body ?? "");
   const [msgStatus, setMsgStatus] = useState(props.message?.status ?? "none");
   const [revision, setRevision] = useState("");
+  const [withFiles, setWithFiles] = useState(false);
   const [res, setRes] = useState<ActionResult | null>(null);
   const [pending, start] = useTransition();
   const locked = props.closed || p.doNotContact;
@@ -67,6 +68,12 @@ export function ProspectRow(props: RowProps) {
                 onClick={() => run(() => whatsappAction(campaignId, cpId, false), (r) => { if (r.url) window.open(r.url, "_blank", "noopener,noreferrer"); })}>Abrir WhatsApp</button>
               <button className="btn" disabled={locked || pending || msgStatus !== "approved" || !p.email} title={p.email ? "Abre tu programa de correo con el mensaje ya escrito" : "El prospecto no tiene correo: complétalo en su ficha"}
                 onClick={() => run(() => emailAction(campaignId, cpId, false), (r) => { if (r.url) window.location.href = r.url; })}>Abrir correo</button>
+              {props.gmailConnected && (
+                <span className="inline-flex flex-wrap items-center gap-2">
+                  <button className="btn btn-primary" disabled={locked || pending || msgStatus !== "approved" || !p.email} title="Envía este mensaje desde tu Gmail, sin salir de la plataforma"
+                    onClick={() => { if (confirm(`Se enviará un correo REAL a ${p.email} desde tu Gmail. ¿Continuar?`)) run(async () => { const r = await gmailSendOneAction(campaignId, cpId, { attachmentIds: withFiles ? (props.attachments ?? []).map((a) => a.id) : [], inlineImages: false, optOut: true, allowRepeat: false }); return r.ok ? { ok: "Correo enviado desde tu Gmail." } : { error: r.error }; }); }}>Enviar con mi Gmail</button>
+                  {(props.attachments?.length ?? 0) > 0 && <label className="flex items-center gap-1 text-xs"><input type="checkbox" checked={withFiles} onChange={(e) => setWithFiles(e.target.checked)} /> con el material ({props.attachments!.length})</label>}
+                </span>)}
             </div>
             {(props.attachments?.length ?? 0) > 0 && (
               <div className="mt-2 space-y-1 rounded-[var(--radius)] border p-2 text-sm" style={{ borderColor: "var(--color-border)" }}>

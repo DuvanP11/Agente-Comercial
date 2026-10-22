@@ -13,6 +13,10 @@ import { ChartCard, Donut, Funnel, SERIES } from "@/components/charts";
 import { Insight } from "@/components/Insight";
 import { campaignFunnel, campaignInsight, campaignNumbers } from "@/lib/campaign-stats";
 import { listAttachments } from "@/lib/services/campaign-media";
+import { EmailSender } from "./EmailSender";
+import { dailyCap, getConnection, sendableRecipients, sentToday } from "@/lib/services/gmail";
+import { oauthConfig } from "@/lib/google-oauth";
+import { renderTemplate } from "@/lib/campaigns";
 import { AttachmentsPanel } from "./AttachmentsPanel";
 import { CampaignEditor } from "./CampaignEditor";
 import { CoverUploader } from "./CoverUploader";
@@ -34,6 +38,8 @@ export default async function CampaignPage({ params }: { params: Promise<{ id: s
   const ai = aiReady();
   const attachments = await listAttachments(db, org, id);
   const n = campaignNumbers(funnel);
+  const me = await requireUser();
+  const [conn, recipients, today] = await Promise.all([getConnection(db, me.id), sendableRecipients(db, org, id), sentToday(db, me.email)]);
   const coverLen = c.coverData ? c.coverData.length : 0;
   const options = closed ? [] : (await eligibleProspects(db, org, id, viewer)).map((p) => ({ id: p.id, name: p.name, city: p.city, category: p.category, hasPhone: !!normalizePhone(p.phone) }));
 
@@ -73,7 +79,10 @@ export default async function CampaignPage({ params }: { params: Promise<{ id: s
 
       <AttachmentsPanel campaignId={id} items={attachments} closed={closed} />
 
-      {!closed && <details className="card"><summary className="cursor-pointer font-semibold">Editar textos de la campaña</summary><div className="mt-3"><CampaignEditor campaignId={id} initial={{ name: c.name, objective: c.objective ?? "", valueProposition: c.valueProposition ?? "", template: c.template }} /></div></details>}
+      <EmailSender campaignId={id} configured={!!oauthConfig()} connectedAs={conn?.email ?? null} recipients={recipients} attachments={attachments.map((a) => ({ id: a.id, name: a.name, kind: a.kind, size: a.size }))} sentToday={today} cap={dailyCap()} closed={closed}
+        subjectPreview={renderTemplate(c.emailSubject?.trim() || c.name, { empresa: "Nombre del negocio", ciudad: "Bogotá", categoria: "su rubro" }).text} />
+
+      {!closed && <details className="card"><summary className="cursor-pointer font-semibold">Editar textos de la campaña</summary><div className="mt-3"><CampaignEditor campaignId={id} initial={{ name: c.name, objective: c.objective ?? "", valueProposition: c.valueProposition ?? "", template: c.template, emailSubject: c.emailSubject ?? "" }} /></div></details>}
 
       {!closed && <section aria-labelledby="add"><h2 id="add" className="mb-2 font-semibold">Agregar prospectos</h2><AddProspects campaignId={id} options={options} /></section>}
 
@@ -84,7 +93,7 @@ export default async function CampaignPage({ params }: { params: Promise<{ id: s
             <ProspectRow key={i.cp.id} campaignId={id} cpId={i.cp.id} closed={closed}
               p={{ id: i.p.id, name: i.p.name, phone: i.p.phone, email: i.p.email, city: i.p.city, doNotContact: i.p.doNotContact }}
               status={i.cp.status} followUpDate={bogotaDate(i.cp.nextFollowUpAt)} notes={i.cp.notes ?? ""} followUp={i.followUp}
-              message={i.message ? { body: i.message.body, status: i.message.status } : null} opens={i.opens} aiReady={ai} attachments={attachments} />))}
+              message={i.message ? { body: i.message.body, status: i.message.status } : null} opens={i.opens} aiReady={ai} attachments={attachments} gmailConnected={!!conn} />))}
       </section>
 
       {!closed && (

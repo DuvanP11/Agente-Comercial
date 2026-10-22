@@ -210,6 +210,8 @@ export const campaigns = pgTable("campaigns", {
   /** Imagen de portada de la campaña (PNG/JPEG/WebP, ya reducida) en base64. */
   coverData: text("cover_data"),
   coverMime: text("cover_mime"),
+  /** Asunto de los correos de la campaña (admite {empresa}, {ciudad}, {categoria}). Vacío = el nombre de la campaña. */
+  emailSubject: text("email_subject"),
   /** Quien creó la campaña: el Hunter solo ve las suyas. */
   ownerId: text("owner_id"),
   createdAt: ts("created_at"),
@@ -367,4 +369,16 @@ export const trainingLessons = pgTable("training_lessons", {
   active: boolean("active").notNull().default(true),
   createdBy: text("created_by"),
   createdAt: ts("created_at"),
+});
+
+
+/** Gmail conectado por cada persona para enviar desde la web con su propia cuenta. El token de renovación va cifrado. */
+export const gmailConnections = pgTable("gmail_connections", {
+  userId: text("user_id").primaryKey(),
+  orgId: text("org_id").notNull().references(() => organizations.id),
+  email: text("email").notNull(),
+  refreshTokenEnc: text("refresh_token_enc").notNull(),
+  scope: text("scope"),
+  connectedAt: ts("connected_at"),
+  lastUsedAt: timestamp("last_used_at", { withTimezone: true }),
 });

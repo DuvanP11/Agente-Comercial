@@ -2,6 +2,8 @@ import { getConnectors, PENDING_CONNECTORS } from "@/lib/connectors/registry";
 import { authConfigured } from "@/lib/auth";
 import { aiStatus } from "@/lib/ai/provider";
 import { GoogleCheck } from "./GoogleCheck";
+import { oauthConfig } from "@/lib/google-oauth";
+import { dailyCap } from "@/lib/services/gmail";
 
 const NO_KEY = new Set(["openstreetmap", "business_directory"]); // fuentes públicas: no usan clave
 
@@ -9,6 +11,7 @@ export const dynamic = "force-dynamic";
 
 export default function Integraciones() {
   const ai = aiStatus();
+  const gmailOn = !!oauthConfig();
   const rows = getConnectors().map((c) => ({ id: c.id, label: c.label, status: c.status() }));
   return (
     <div className="space-y-4">
@@ -33,6 +36,17 @@ export default function Integraciones() {
                 <td><span className={`badge ${r.status.state === "connected" ? "badge-ok" : "badge-warn"}`}>{r.status.state === "connected" ? (NO_KEY.has(r.id) ? "Disponible (sin clave)" : "Clave presente (no probada)") : r.status.state === "not_configured" ? "Pendiente" : "Error"}</span></td>
                 <td className="text-sm">{r.status.state === "not_configured" ? `Falta ${r.status.missing.join(", ")}. ${r.status.howTo}` : r.status.state === "error" ? r.status.message : NO_KEY.has(r.id) ? (r.id === "business_directory" ? "Datos abiertos del Registro Mercantil (Confecámaras, datos.gov.co). No requiere clave; trae empresas y NIT, sin teléfono ni correo." : "Servicio público gratuito; a veces tarda o se satura.") : "La clave existe; el primer uso real confirma si es válida."}</td></tr>
             ))}
+            <tr><td>Gmail (envío desde la plataforma)</td>
+              <td><span className={`badge ${gmailOn ? "badge-ok" : "badge-warn"}`}>{gmailOn ? "Credenciales presentes (no probado con Google)" : "Pendiente"}</span></td>
+              <td className="text-sm">{gmailOn ? <>Cada persona conecta su propio Gmail desde una campaña y envía con su cuenta (tope de {dailyCap()} por día y persona). Solo se pide el permiso de <b>enviar</b>; no se lee la bandeja. El primer envío real confirma que todo quedó bien.</> : <>Falta <code>GOOGLE_OAUTH_CLIENT_ID</code> y <code>GOOGLE_OAUTH_CLIENT_SECRET</code>. Mientras tanto, «Abrir correo» abre tu programa de correo con el mensaje ya escrito.</>}
+                <details className="mt-2"><summary className="cursor-pointer underline">Qué hay que hacer para conectarlo</summary>
+                  <ol className="mt-1 list-decimal space-y-1 pl-5">
+                    <li>En Google Cloud, proyecto de PIBOX: habilitar «Gmail API».</li>
+                    <li>Pantalla de consentimiento OAuth: tipo «Interna» (así solo entran cuentas del dominio) y agregar el alcance <code>gmail.send</code>.</li>
+                    <li>Crear un ID de cliente OAuth de tipo «Aplicación web» con la URI de redireccionamiento autorizada <code>https://&lt;dominio de la plataforma&gt;/api/gmail/callback</code>.</li>
+                    <li>En Vercel (como «Sensitive») cargar <code>GOOGLE_OAUTH_CLIENT_ID</code> y <code>GOOGLE_OAUTH_CLIENT_SECRET</code>; opcional <code>GMAIL_TOKEN_KEY</code> (clave propia para cifrar los permisos guardados) y <code>GMAIL_DAILY_CAP</code> (tope diario por persona, 150 por defecto). Volver a desplegar.</li>
+                    <li>Cada persona entra a una campaña → «Conectar mi Gmail». Cada envío exige un mensaje aprobado por una persona y respeta «No contactar» y el máximo de intentos.</li>
+                  </ol></details></td></tr>
             {PENDING_CONNECTORS.map((c) => (
               <tr key={c.id}><td>{c.label}</td>
                 <td><span className={`badge ${c.tone === "ok" ? "badge-ok" : c.tone === "warn" ? "badge-warn" : ""}`}>{c.badge}</span></td>
