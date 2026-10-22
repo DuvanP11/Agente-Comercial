@@ -11,14 +11,14 @@ export const dynamic = "force-dynamic";
 
 const STEPS = [
   { n: 1, icon: "search", title: "Encuentra negocios", text: "Busca por ciudad y rubro en OpenStreetMap, en el Registro Mercantil o importa tu propia lista.", href: "/buscar", cta: "Buscar clientes" },
-  { n: 2, icon: "analyze", title: "Califica con evidencia", text: "Valora cada negocio, deja claro qué sabes y qué no, y obtén una prioridad para saber a quién llamar primero.", href: "/analizar", cta: "Analizar" },
+  { n: 2, icon: "analyze", title: "Califica con evidencia", text: "Valora cada prospecto, deja claro qué sabes y qué no, y obtén una prioridad para saber a quién llamar primero.", href: "/analizar", cta: "Analizar" },
   { n: 3, icon: "target", title: "Prepara el acercamiento", text: "Elige a los mejores, revisa su plan de acercamiento y súmalos a una campaña.", href: "/captar", cta: "Captar clientes" },
   { n: 4, icon: "megaphone", title: "Contacta con criterio", text: "Mensajes aprobados por ti, con imágenes, video o PDF. WhatsApp se abre; tú decides cuándo enviar.", href: "/campanas", cta: "Campañas" },
   { n: 5, icon: "database", title: "Da seguimiento", text: "Registra cada intento y su resultado: contactado, interesado, sin respuesta… y no pierdas ningún seguimiento.", href: "/prospectos", cta: "Base de prospectos" },
 ];
 
 const CAPS = [
-  { icon: "target", title: "Rastreo GPS en vivo", text: "Cada pedido con enlace de seguimiento para el cliente final y para su equipo." },
+  { icon: "target", title: "Rastreo GPS en vivo", text: "Cada pedido con enlace de seguimiento para quien lo recibe y para el equipo del cliente." },
   { icon: "analyze", title: "Prueba de entrega", text: "Foto y confirmación en cada pedido: se acabó el «no me llegó»." },
   { icon: "plug", title: "Integración y carga masiva", text: "Los pedidos entran a PIBOX por API o por carga de archivos, sin digitar uno por uno." },
   { icon: "eye", title: "Monitoreo con alertas", text: "Un equipo audita los servicios y avisa si uno se demora o se desvía, antes de que llegue el reclamo." },
@@ -26,7 +26,7 @@ const CAPS = [
 ];
 
 const RULES = [
-  "Habla de capacidades reales de PIBOX. Las mejoras se presentan como metas de un piloto, nunca como promesas.",
+  "Habla de capacidades reales de PIBOX. Las mejoras se presentan como metas acordadas con el cliente, nunca como promesas.",
   "No des precios, descuentos ni tiempos que PIBOX no haya aprobado: si no tienes la tarifa oficial, ofrece enviarla.",
   "Respeta a quien pide no ser contactado (Ley 1581): márcalo y la plataforma lo bloquea en todas las campañas.",
   "Máximo de intentos por prospecto: cuando se agotan sin respuesta, se pasa al siguiente.",
@@ -56,7 +56,7 @@ export default async function Bienvenida() {
               <span className="rounded-full px-3 py-1" style={{ background: "rgb(255 255 255 / .12)" }}>{ROLES[me.role as keyof typeof ROLES] ?? me.role}</span>
             </div>
             <h1 className="text-3xl font-extrabold leading-tight md:text-5xl">{greet}, {first}.<br />Hoy conseguimos clientes que despachan.</h1>
-            <p className="max-w-xl text-base opacity-95 md:text-lg">Entregas a tiempo y visibles, pedido por pedido. Encuentra negocios con envíos, califícalos con evidencia y llévalos de la primera conversación a un piloto con PIBOX.</p>
+            <p className="max-w-xl text-base opacity-95 md:text-lg">Entregas a tiempo y visibles, pedido por pedido. Encuentra negocios con envíos, califícalos con evidencia y llévalos de la primera conversación a ser clientes de PIBOX.</p>
             <div className="flex flex-wrap gap-3 pt-2">
               <Link href="/buscar" className="hero-btn"><Icon name="search" size={18} /> Buscar clientes</Link>
               <Link href="/campanas" className="hero-btn ghost"><Icon name="megaphone" size={18} /> Ver campañas</Link>
@@ -88,8 +88,8 @@ export default async function Bienvenida() {
       </section>
 
       <section aria-label="Cómo trabajar">
-        <h2 className="mb-1 text-xl font-bold">Del primer contacto al piloto, en 5 pasos</h2>
-        <p className="mb-3 text-sm text-muted">Este es el camino que sigue cada negocio dentro de la plataforma.</p>
+        <h2 className="mb-1 text-xl font-bold">Del primer contacto al cliente, en 5 pasos</h2>
+        <p className="mb-3 text-sm text-muted">Este es el camino que sigue cada prospecto hasta convertirse en cliente de PIBOX.</p>
         <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-5">
           {STEPS.map((s) => (
             <Link key={s.n} href={s.href} className="card step-card flex flex-col gap-3">
@@ -102,7 +102,7 @@ export default async function Bienvenida() {
       </section>
 
       <section aria-label="Qué ofrece PIBOX">
-        <h2 className="mb-1 text-xl font-bold">Lo que PIBOX le ofrece a un negocio</h2>
+        <h2 className="mb-1 text-xl font-bold">Lo que PIBOX le ofrece a un cliente</h2>
         <p className="mb-3 text-sm text-muted">Capacidades reales para usar en tu conversación comercial.</p>
         <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-5">
           {CAPS.map((c) => (

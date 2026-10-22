@@ -17,6 +17,6 @@ export function describeActionFailure(e: unknown): string {
 export function guardAction<A extends unknown[], S>(action: (...args: A) => Promise<S>, toErrorState: (message: string) => S): (...args: A) => Promise<S> {
   return async (...args: A) => {
     try { return await action(...args); }
-    catch (e) { console.error("Acción del servidor falló en el cliente:", e); return toErrorState(describeActionFailure(e)); }
+    catch (e) { return toErrorState(describeActionFailure(e)); }
   };
 }

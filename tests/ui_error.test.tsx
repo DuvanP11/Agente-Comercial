@@ -18,8 +18,10 @@ describe("explicar errores en llano", () => {
     expect(i.likelyStale).toBe(false); expect(i.title).toMatch(/Algo salió mal/);
   });
   it("el detalle se recorta y lleva la referencia", () => {
-    expect(shortDetail("x".repeat(1000), "123")).toHaveLength(400 + " [ref: 123]".length);
-    expect(shortDetail(undefined)).toBe("(sin mensaje)");
+    expect(shortDetail("x".repeat(1000), "123", false)).toHaveLength(400 + " [ref: 123]".length);
+    expect(shortDetail("select * from users where password = 'x'", "abc", true)).toBe("Referencia: abc"); // en producción no se muestra el mensaje técnico
+    expect(shortDetail("secreto", undefined, true)).toBe("Sin referencia disponible.");
+    expect(shortDetail(undefined, undefined, false)).toBe("(sin mensaje)");
   });
 });
 
@@ -46,9 +48,9 @@ describe("pantalla de recuperación", () => {
     expect(screen.getByText("La aplicación se actualizó")).toBeTruthy();
     expect(screen.queryByRole("button", { name: /Reintentar/ })).toBeNull();
   });
-  it("registra el error en la consola para poder diagnosticarlo", () => {
+  it("NO escribe el error en la consola del navegador (nadie debe leer detalles internos desde ahí)", () => {
     const spy = vi.spyOn(console, "error").mockImplementation(() => {});
-    render(<ErrorScreen error={new Error("registrar")} reset={() => {}} />);
-    expect(spy).toHaveBeenCalled();
+    render(<ErrorScreen error={Object.assign(new Error("select * from usuarios"), { digest: "ref123" })} reset={() => {}} />);
+    expect(spy).not.toHaveBeenCalled();
   });
 });

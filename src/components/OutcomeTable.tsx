@@ -42,14 +42,17 @@ export function OutcomeTable({ outcomes, searchId, readings }: { outcomes: Inges
             <td className="min-w-64">
               <span className={`badge ${BADGE[o.status]}`}>{LABEL[o.status]}</span>
               {o.message && <p className="mt-1 text-sm">{o.message}</p>}
-              {o.matchedWith && (
+              {o.matchedWith && (o.foreign || !o.matchedWith.id ? (
+                // Es de otra persona: solo se muestra el nombre, sin ficha, teléfono ni dirección.
+                <div className="mt-1 rounded border border-border p-2 text-xs"><b>Coincide con un prospecto de otra persona:</b> {o.matchedWith.name}</div>
+              ) : (
                 <div className="mt-1 rounded border border-border p-2 text-xs">
                   <b>Coincide con {o.matchedWith.type === "client" ? "un cliente existente" : "un prospecto que ya tenías guardado"}:</b>{" "}
                   {o.matchedWith.type === "prospect" ? <Link className="underline" href={ficha(o.matchedWith.id)}>{o.matchedWith.name}</Link> : o.matchedWith.name}
                   <div>Dirección: {o.matchedWith.address ?? "No disponible"} · Tel.: {o.matchedWith.phone ?? "No disponible"}</div>
                   {Array.isArray(o.reasons) && <div>Coinciden en: {(o.reasons as { field: keyof typeof FIELD }[]).map((r) => FIELD[r.field] ?? r.field).join(", ")}</div>}
                 </div>
-              )}
+              ))}
             </td>
             {readings && <td className="min-w-56 text-sm"><ReadingCell r={readings[o.prospectId]} id={o.prospectId} /></td>}
           </tr>

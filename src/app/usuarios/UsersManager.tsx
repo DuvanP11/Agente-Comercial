@@ -27,7 +27,7 @@ export function UsersManager({ rows, meId, canManage }: { rows: Row[]; meId: str
   const [draft, setDraft] = useState({ name: "", email: "", username: "", role: "hunter" });
   const [pending, start] = useTransition();
   const run = (p: Promise<UserActionResult>, after?: (r: UserActionResult) => void) => start(async () => { try { const r = await p; setRes(r); after?.(r); } catch { setRes({ error: "No se pudo completar. Recarga la página e inténtalo de nuevo." }); } });
-  const fmt = (d: string | null) => (d ? new Date(d).toLocaleString("es-CO") : "Nunca");
+  const fmt = (d: string | null) => (d ? new Date(d).toLocaleString("es-CO", { timeZone: "America/Bogota" }) : "Nunca"); // zona fija: igual en servidor y navegador (si no, falla la hidratación)
 
   return (
     <div className="space-y-4">

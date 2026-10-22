@@ -17,7 +17,7 @@ export function CaptarPicker({ candidates, campaigns }: { candidates: Candidate[
   const [onlyPhone, setOnlyPhone] = useState(false);
   const [onlyQualified, setOnlyQualified] = useState(false);
   const [dest, setDest] = useState("new");
-  const [newName, setNewName] = useState(`Captación ${new Date().toLocaleDateString("es-CO", { month: "long", year: "numeric" })}`);
+  const [newName, setNewName] = useState(`Captación ${new Date().toLocaleDateString("es-CO", { month: "long", year: "numeric", timeZone: "America/Bogota" })}`);
   const [picked, setPicked] = useState<Set<string>>(new Set());
   const shown = useMemo(() => candidates.filter((c) =>
     (!onlyPhone || c.hasValidPhone) && (!onlyQualified || c.status === "qualified") && `${c.name} ${c.city} ${c.category}`.toLowerCase().includes(q.toLowerCase())), [candidates, q, onlyPhone, onlyQualified]);

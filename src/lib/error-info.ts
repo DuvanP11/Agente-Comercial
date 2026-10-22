@@ -10,7 +10,9 @@ export function explainError(message: string | undefined): { title: string; hint
 }
 
 /** Recorta el detalle para mostrarlo sin desbordar la pantalla ni exponer cadenas largas. */
-export function shortDetail(message: string | undefined, digest?: string): string {
+export function shortDetail(message: string | undefined, digest?: string, production = process.env.NODE_ENV === "production"): string {
+  // En producción NO se muestra el mensaje técnico (puede revelar rutas, consultas o piezas internas): solo una referencia para buscarlo en los registros del servidor.
+  if (production) return digest ? `Referencia: ${digest}` : "Sin referencia disponible.";
   const base = (message ?? "(sin mensaje)").replace(/\s+/g, " ").slice(0, 400);
   return digest ? `${base} [ref: ${digest}]` : base;
 }

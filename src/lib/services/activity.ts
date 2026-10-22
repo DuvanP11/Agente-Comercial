@@ -1,3 +1,4 @@
+import { logError } from "../log";
 import { and, desc, eq, gte, ilike, lte, sql } from "drizzle-orm";
 import type { Db } from "../db/client";
 import { activityLog } from "../db/schema";
@@ -16,7 +17,7 @@ export async function logActivity(db: Db, orgId: string, e: ActivityEntry): Prom
       kind: e.kind, path: e.path ?? null, label: cleanText(e.label, 200) || e.kind, detail: e.detail ?? null,
       ip: cleanText(e.ip, 64) || null, userAgent: cleanText(e.userAgent, 160) || null,
     });
-  } catch (err) { console.error("logActivity falló:", err instanceof Error ? err.message : "error"); }
+  } catch (err) { logError("logActivity falló:", err instanceof Error ? err.message : "error"); }
 }
 
 export interface ActivityFilter { userId?: string; kind?: string; q?: string; from?: Date; to?: Date; limit?: number }

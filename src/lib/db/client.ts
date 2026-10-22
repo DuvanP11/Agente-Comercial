@@ -1,3 +1,4 @@
+import { logError } from "../log";
 import path from "node:path";
 import { PGlite } from "@electric-sql/pglite";
 import { drizzle as drizzlePglite } from "drizzle-orm/pglite";
@@ -37,7 +38,7 @@ export function getDb(): Promise<Db> {
   return (g.__db ??= init().then(async (db) => {
     // Mantenimiento ligero y seguro (solo claves vacías); un fallo aquí nunca debe tumbar la aplicación.
     try { const { backfillPhoneKeys } = await import("../services/maintenance"); await backfillPhoneKeys(db); }
-    catch (e) { console.error("backfillPhoneKeys falló:", e); }
+    catch (e) { logError("backfillPhoneKeys falló:", e); }
     return db;
   }));
 }

@@ -1,4 +1,5 @@
 "use server";
+import { logError } from "@/lib/log";
 import { onlyMine } from "@/lib/guard";
 import { requireUser } from "@/lib/session";
 import { viewerOf } from "@/lib/services/scope";
@@ -66,7 +67,7 @@ export async function runSearch(_: SearchState, fd: FormData): Promise<SearchSta
   } catch (e) {
     // Nunca dejar que una excepción llegue como "Application error": se muestra la causa (sin cadenas de conexión).
     const msg = (e instanceof Error ? e.message : String(e)).replace(/postgres(ql)?:\/\/\S+/gi, "[conexión oculta]").slice(0, 400);
-    console.error("runSearch falló:", e);
+    logError("runSearch falló:", e);
     if (searchId) {
       try { const db = await getDb(); await db.update(searches).set({ status: "failed", error: msg, finishedAt: new Date() }).where(eq(searches.id, searchId)); } catch { /* ya se informa abajo */ }
     }
@@ -85,7 +86,7 @@ export async function interpretAction(text: string): Promise<InterpretResult> {
     // "Respuesta rechazada:" suena a error del sistema; aquí es una indicación para quien escribe.
     return { ok: r.ok, error: r.error?.replace(/^Respuesta rechazada: /, ""), warnings: r.warnings, output: r.output };
   } catch (e) {
-    console.error("interpretAction falló:", e);
+    logError("interpretAction falló:", e);
     return { ok: false, error: "No se pudo interpretar la búsqueda.", warnings: [] };
   }
 }
@@ -100,7 +101,7 @@ export async function analyzeResultsAction(prospectIds: string[]): Promise<Analy
     const db = await getDb();
     return await analyzeBatch(db, await ensureDefaultOrg(db), ids, providerFromEnv(), "usuario");
   } catch (e) {
-    console.error("analyzeResultsAction falló:", e);
+    logError("analyzeResultsAction falló:", e);
     return { readings: [], analyzed: 0, cached: 0, pending: 0, error: "No se pudieron analizar los resultados." };
   }
 }
@@ -128,7 +129,7 @@ export async function addLinkedinProspectAction(_: ManualState, fd: FormData): P
     await track("action", "Guardó una empresa copiada de LinkedIn", { nombre: name }, "/buscar");
     return o.status === "already_stored" ? { ok: "Esa página de LinkedIn ya estaba guardada.", outcome: o } : { ok: o.message ?? "Empresa guardada como prospecto.", outcome: o };
   } catch (e) {
-    console.error("addLinkedinProspectAction falló:", e);
+    logError("addLinkedinProspectAction falló:", e);
     return { error: "No se pudo guardar la empresa." };
   }
 }

@@ -1,4 +1,5 @@
 "use server";
+import { logError } from "@/lib/log";
 import { guardProspect } from "@/lib/guard";
 import { track } from "@/lib/track";
 import { revalidatePath } from "next/cache";
@@ -53,7 +54,7 @@ export async function proposeAction(prospectId: string): Promise<ProposeResult> 
     if (r.ok) await track("action", "Pidió una propuesta de valoración a la IA", { prospecto: prospectId }, `/analizar/${prospectId}`);
     return { ok: r.ok, error: r.error, warnings: r.warnings, proposal: r.output };
   } catch (e) {
-    console.error("proposeAction falló:", e);
+    logError("proposeAction falló:", e);
     return { ok: false, error: "No se pudo generar la propuesta.", warnings: [] };
   }
 }

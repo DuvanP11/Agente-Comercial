@@ -1,4 +1,5 @@
 "use server";
+import { logError } from "@/lib/log";
 import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
 import { ensureDefaultOrg, getDb } from "@/lib/db/client";
@@ -98,7 +99,7 @@ export async function aiDraftAction(campaignId: string, cpId: string, revision: 
     revalidatePath(`/campanas/${campaignId}`);
     return { ok: r.ok ? "Borrador generado con IA. Revísalo y apruébalo si está bien." : undefined, error: r.error, warnings: r.warnings, text: r.output?.body };
   } catch (e) {
-    console.error("aiDraftAction falló:", e);
+    logError("aiDraftAction falló:", e);
     return { error: "No se pudo redactar el borrador." };
   }
 }
