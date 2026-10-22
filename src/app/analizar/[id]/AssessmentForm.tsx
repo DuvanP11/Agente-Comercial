@@ -1,7 +1,7 @@
 "use client";
 import { useActionState, useState, useTransition } from "react";
 import type { QualificationProposal } from "@/lib/agents/qualification";
-import { CRITERION_LABELS, DEFAULT_WEIGHTS, type CriterionAssessment, type CriterionKey } from "@/lib/scoring/score";
+import { CRITERION_HELP, CRITERION_LABELS, DEFAULT_WEIGHTS, type CriterionAssessment, type CriterionKey } from "@/lib/scoring/score";
 import { proposeAction, qualifyAction, saveAction, type AnalysisState, type ProposeResult } from "./actions";
 
 interface Ev { id: string; field: string; observedValue: string; sourceName: string }
@@ -65,6 +65,18 @@ export function AssessmentForm({ weights = DEFAULT_WEIGHTS, prospectId, evidence
           </div>)}
       </div>
 
+      <details className="card text-sm">
+        <summary className="cursor-pointer font-semibold">Cómo llenar cada criterio</summary>
+        <ul className="mt-2 list-disc space-y-1 pl-5">
+          <li><b>Desconocido:</b> no sabes (o no hay datos). No suma ni resta. Es la opción correcta cuando dudas.</li>
+          <li><b>Confirmado:</b> lo demuestra una evidencia de la ficha; hay que marcar cuál. Solo así queda «respaldado en evidencia».</li>
+          <li><b>Inferencia:</b> lo deduces razonablemente de los datos (por ejemplo, una tienda online probablemente despacha).</li>
+          <li><b>Hipótesis:</b> es una suposición que falta validar hablando con el negocio.</li>
+          <li><b>Qué tan favorable es:</b> de 0 (nada favorable) a 1 (muy favorable). Solo se pide cuando no es «Desconocido».</li>
+        </ul>
+        <p className="mt-2 text-xs text-muted">Al guardar se calcula la prioridad. Si todavía falta información para calcularla, el sistema lo dice; guardar igual sirve para ir completando después.</p>
+      </details>
+
       <form action={action} className="space-y-3">
         {KEYS.map((k) => {
           const r = rows[k];
@@ -72,6 +84,7 @@ export function AssessmentForm({ weights = DEFAULT_WEIGHTS, prospectId, evidence
             <fieldset key={k} className="card space-y-2">
               <legend className="px-1 font-semibold">{CRITERION_LABELS[k]} <span className="text-xs font-normal text-muted">(peso {weights[k]})</span>
                 {origin[k] === "model" && <span className="badge ml-2">IA</span>}{origin[k] === "rule" && <span className="badge ml-2">regla</span>}</legend>
+              <p className="text-xs text-muted">{CRITERION_HELP[k]}</p>
               <div className="grid gap-2 md:grid-cols-3">
                 <div><label className="label" htmlFor={`${k}_kind`}>Naturaleza</label>
                   <select id={`${k}_kind`} name={`${k}_kind`} className="input" value={r.kind} onChange={(e) => set(k, { kind: e.target.value, ev: e.target.value === "confirmed" ? r.ev : [] })}>

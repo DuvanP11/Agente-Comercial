@@ -1,5 +1,6 @@
 import { ensureDefaultOrg, getDb } from "@/lib/db/client";
 import { listClients } from "@/lib/services/clients";
+import { ClientImportHelp } from "./ClientImportHelp";
 import { ImportForm } from "./ImportForm";
 
 export const dynamic = "force-dynamic";
@@ -13,7 +14,7 @@ export default async function Clientes() {
         <h1 className="text-2xl font-bold">Clientes existentes</h1>
         <p className="text-sm text-muted">Cargar clientes existentes evita que se contacten como prospectos nuevos. {rows.length} registrados.</p>
       </header>
-      <section aria-labelledby="cargar"><h2 id="cargar" className="mb-2 font-semibold">Cargar clientes existentes</h2><ImportForm /></section>
+      <section aria-labelledby="cargar"><h2 id="cargar" className="mb-2 font-semibold">Cargar clientes existentes</h2><div className="space-y-3"><ClientImportHelp /><ImportForm /></div></section>
       <section aria-labelledby="lista" className="card overflow-x-auto">
         <h2 id="lista" className="mb-2 font-semibold">Registrados</h2>
         {rows.length === 0 ? <p className="text-sm text-muted">Aún no hay clientes cargados. Importa un CSV o Excel para empezar.</p> : (

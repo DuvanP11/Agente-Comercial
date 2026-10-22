@@ -28,6 +28,18 @@ export const CRITERION_LABELS: Record<CriterionKey, string> = {
   evidence_quality: "Calidad de la evidencia",
 };
 
+/** Qué mide cada criterio, en palabras llanas (se muestra junto al criterio). */
+export const CRITERION_HELP: Record<CriterionKey, string> = {
+  icp_fit: "Se parece al cliente ideal que definiste en Entrenamiento de IA.",
+  logistics_need: "Se nota que despacha o necesita envíos.",
+  delivery_volume: "Cuántas entregas podría generar.",
+  delivery_frequency: "Qué tan seguido las necesitaría.",
+  geo_compatibility: "Está donde PIBOX opera.",
+  operational_viability: "Se puede atender (horarios, acceso).",
+  contact_channel: "Hay teléfono, correo o web para contactarlo. Lo calcula el sistema.",
+  evidence_quality: "Cuántos datos clave tienen evidencia registrada. Lo calcula el sistema.",
+};
+
 export const criterionAssessment = z.object({
   /** 0..1. Se ignora cuando kind === "unknown". */
   value: z.number().min(0).max(1),

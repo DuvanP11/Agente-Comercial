@@ -1,5 +1,9 @@
 import { ensureDefaultOrg, getDb } from "@/lib/db/client";
 import { byCategory, byCity, bySector, bySource, quality, rate, searchHealth, sinceDate, SMALL_SAMPLE, type GroupStats } from "@/lib/market";
+import { ChartCard, Donut, Funnel, HBars, SERIES } from "@/components/charts";
+import { Insight } from "@/components/Insight";
+import { funnel } from "@/lib/dashboard";
+import { funnelInsight, rankInsight, sourceInsight } from "@/lib/dashboard-insights";
 import { loadMarket } from "@/lib/services/market";
 
 export const dynamic = "force-dynamic";
@@ -34,6 +38,10 @@ export default async function Mercado({ searchParams }: { searchParams: Promise<
   const { rows, searches: sRows, demoCount, excludedDuplicates } = await loadMarket(db, await ensureDefaultOrg(db), { since: sinceDate(dias), includeDemo: demo === "1" });
   const q = quality(rows);
   const health = searchHealth(sRows);
+  const sectors = bySector(rows), cities = byCity(rows), sources = bySource(rows);
+  const phoneBySector = sectors.filter((g) => g.total >= SMALL_SAMPLE).map((g) => ({ label: g.label, value: rate(g.withPhone, g.total) ?? 0, note: `${g.withPhone} de ${g.total} con teléfono` })).sort((a, b) => b.value - a.value);
+  const completed = health.reduce((a, h) => a + h.completed - h.withWarnings, 0), warned = health.reduce((a, h) => a + h.withWarnings, 0), failed = health.reduce((a, h) => a + h.failed, 0);
+  const bestPhone = phoneBySector[0], worstPhone = phoneBySector[phoneBySector.length - 1];
   const sel = dias && ["30", "90", "365"].includes(dias) ? dias : "all";
   return (
     <div className="space-y-5">
@@ -59,6 +67,37 @@ export default async function Mercado({ searchParams }: { searchParams: Promise<
       </section>
       {excludedDuplicates > 0 && <p className="text-xs text-muted">No se cuentan {excludedDuplicates} registros excluidos por duplicado.</p>}
       {q.total === 0 && <p role="status" className="card text-sm">No hay prospectos en este periodo. Haz una búsqueda o importa una lista para ver datos aquí.</p>}
+
+      {q.total > 0 && (
+        <section aria-label="Gráficos" className="grid gap-3 lg:grid-cols-2">
+          <ChartCard title="Prospectos por familia de rubro" note="Cuántos prospectos hay en cada familia.">
+            <HBars color="var(--s1)" data={sectors.slice(0, 8).map((g) => ({ label: g.label, value: g.total, note: `${g.qualified} calificados · prioridad prom. ${g.avgPriority ?? "—"}` }))} />
+            <Insight>{rankInsight(sectors, "rubros")}</Insight>
+          </ChartCard>
+          <ChartCard title="Cobertura de teléfono por rubro" note={`Solo rubros con ${SMALL_SAMPLE} prospectos o más (con menos, el % dice poco).`}>
+            <HBars unit=" %" max={100} color="var(--s3)" data={phoneBySector} />
+            <Insight>{phoneBySector.length >= 2 ? `${bestPhone.label} es el rubro más fácil de contactar (${bestPhone.value} % con teléfono) y ${worstPhone.label} el más difícil (${worstPhone.value} %). Para campañas por WhatsApp conviene empezar por los primeros.` : "Aún no hay rubros con suficientes prospectos para comparar."}</Insight>
+          </ChartCard>
+          <ChartCard title="Embudo del periodo" note="Cada etapa cuenta a quien llegó a ella o más lejos; el % es frente a la etapa anterior.">
+            <Funnel steps={funnel(rows)} />
+            <Insight>{funnelInsight(funnel(rows))}</Insight>
+          </ChartCard>
+          <ChartCard title="Ciudades" note="Top 6 por cantidad de prospectos.">
+            <HBars color="var(--s4)" data={cities.slice(0, 6).map((g) => ({ label: g.label, value: g.total, note: `${g.withPhone} con teléfono` }))} />
+            <Insight>{rankInsight(cities, "ciudades")}</Insight>
+          </ChartCard>
+          <ChartCard title="Fuentes" note="De dónde salieron los prospectos.">
+            <HBars data={sources.map((g, i) => ({ label: g.label, value: g.total, color: SERIES[i % 3], note: `${g.withPhone} con teléfono` }))} />
+            <Insight>{sourceInsight(sources)}</Insight>
+          </ChartCard>
+          <ChartCard title="Salud de las búsquedas" note="Cómo terminaron las búsquedas del periodo.">
+            <Donut center={String(completed + warned + failed)} data={[
+              { label: "Completas", value: completed, color: SERIES[2] }, { label: "Con avisos (parte de la fuente falló)", value: warned, color: SERIES[1] }, { label: "Fallidas", value: failed, color: SERIES[4] },
+            ]} />
+            <Insight>{completed + warned + failed === 0 ? "Aún no hay búsquedas registradas." : failed + warned === 0 ? "Todas las búsquedas terminaron sin problemas." : `${Math.round(((failed + warned) / (completed + warned + failed)) * 100)} % de las búsquedas tuvo avisos o falló: suele ser el servidor público de OpenStreetMap saturado.`}</Insight>
+          </ChartCard>
+        </section>
+      )}
 
       <Table title="Por rubro (familias)" rows={bySector(rows)} note="Agrupa los rubros escritos a mano en familias (p. ej. cosmética + perfumería = Belleza). “General” es lo que no se pudo clasificar." />
       <Table title="Por rubro original" rows={byCategory(rows)} />
