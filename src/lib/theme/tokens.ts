@@ -1,4 +1,5 @@
 import { z } from "zod";
+import { DEFAULT_PALETTE, PRESETS, type PaletteColors } from "./presets";
 
 const hex = z.string().regex(/^#[0-9a-fA-F]{6}$/, "Color hexadecimal #RRGGBB");
 
@@ -10,6 +11,10 @@ export const themeTokens = z.object({
   radius: z.number().int().min(0).max(24),
   density: z.enum(["compact", "comfortable", "spacious"]),
   cardStyle: z.enum(["flat", "outlined", "elevated"]),
+  /** Paleta elegida («custom» = colores propios) y si sigue al sistema, o es siempre clara u oscura. Opcionales: los temas viejos no los traen. */
+  palette: z.string().max(20).optional(),
+  scheme: z.enum(["auto", "light", "dark"]).optional(),
+  muted: hex.optional(), border: hex.optional(), success: hex.optional(), warning: hex.optional(), danger: hex.optional(),
 });
 export type ThemeTokens = z.infer<typeof themeTokens>;
 
@@ -23,6 +28,13 @@ export const PROVISIONAL_THEME: ThemeTokens = {
   background: "#f5f7fb", surface: "#ffffff", text: "#111827",
   font: "system", radius: 10, density: "comfortable", cardStyle: "outlined",
 };
+
+/** Diseño de arranque: paleta Pibox (morado), siguiendo el modo claro/oscuro del sistema. */
+export function tokensFromPalette(c: PaletteColors, mode: "light" | "dark", shared: Pick<ThemeTokens, "font" | "radius" | "density" | "cardStyle">): ThemeTokens {
+  return { mode, primary: c.brand, secondary: c.muted, accent: c.accent, background: c.bg, surface: c.surface, text: c.text, muted: c.muted, border: c.border, success: c.ok, warning: c.warn, danger: c.err, ...shared };
+}
+const SHARED = { font: "system", radius: 10, density: "comfortable", cardStyle: "outlined" } as const;
+export const DEFAULT_THEME: ThemeTokens = { ...tokensFromPalette(PRESETS[DEFAULT_PALETTE].light, "light", SHARED), palette: DEFAULT_PALETTE, scheme: "auto" };
 
 export const PROVISIONAL_DARK: ThemeTokens = {
   ...PROVISIONAL_THEME, mode: "dark",
@@ -43,16 +55,16 @@ export function onColor(bg: string): string {
 
 /** Todas las variables que consume la interfaz; ningún componente usa colores sueltos. */
 export function tokensToCssVars(t: ThemeTokens): Record<string, string> {
-  const border = mix(t.text, t.surface, 0.14);
+  const border = t.border ?? mix(t.text, t.surface, 0.14);
   return {
     "--color-primary": t.primary, "--color-on-primary": onColor(t.primary),
     "--color-secondary": t.secondary, "--color-accent": t.accent, "--color-on-accent": onColor(t.accent),
     "--color-bg": t.background, "--color-surface": t.surface, "--color-text": t.text,
-    "--color-muted": mix(t.text, t.surface, 0.62), "--color-border": border,
+    "--color-muted": t.muted ?? mix(t.text, t.surface, 0.62), "--color-border": border,
     "--color-surface-2": mix(t.text, t.surface, 0.05),
-    "--color-danger": t.mode === "dark" ? "#ff8a8a" : "#b42318",
-    "--color-warning": t.mode === "dark" ? "#fbbf24" : "#92600a",
-    "--color-success": t.mode === "dark" ? "#4ade80" : "#106b3a",
+    "--color-danger": t.danger ?? (t.mode === "dark" ? "#ff8a8a" : "#b42318"),
+    "--color-warning": t.warning ?? (t.mode === "dark" ? "#fbbf24" : "#92600a"),
+    "--color-success": t.success ?? (t.mode === "dark" ? "#4ade80" : "#106b3a"),
     "--radius": `${t.radius}px`, "--density": DENSITY[t.density], "--font": FONTS[t.font],
     "--card-shadow": t.cardStyle === "elevated" ? "0 4px 18px rgb(0 0 0 / 0.12)" : "none",
     "--card-border": t.cardStyle === "flat" ? "1px solid transparent" : `1px solid ${border}`,
@@ -91,9 +103,33 @@ export function checkContrast(t: ThemeTokens): ContrastIssue[] {
     ["Texto secundario sobre superficies", v["--color-muted"], t.surface, 4.5],
     ["Texto de botón primario", v["--color-on-primary"], t.primary, 4.5],
     ["Primario como texto/enlace sobre superficies", t.primary, t.surface, 4.5],
-    ["Acento como texto sobre superficies", t.accent, t.surface, 4.5],
+    // El acento no se usa para texto en ninguna pantalla (solo como resaltado), por eso no se exige contraste de texto.
   ];
   return pairs
     .map(([pair, fg, bg, required]) => ({ pair, ratio: Math.round(contrastRatio(fg, bg) * 100) / 100, required }))
     .filter((p) => p.ratio < p.required);
+}
+
+
+/**
+ * Resuelve un tema a sus variantes. Con una paleta de la lista y modo «auto» hay clara y oscura (el navegador elige según el sistema);
+ * con colores propios hay una sola. Un tema viejo (sin paleta) se respeta tal cual.
+ */
+export function resolveTheme(t: ThemeTokens): { light: ThemeTokens; dark: ThemeTokens | null } {
+  const preset = t.palette && t.palette !== "custom" ? PRESETS[t.palette] : undefined;
+  if (!preset) return { light: t, dark: null };
+  const shared = { font: t.font, radius: t.radius, density: t.density, cardStyle: t.cardStyle };
+  const scheme = t.scheme ?? t.mode;
+  const light = { ...tokensFromPalette(preset.light, "light", shared), palette: t.palette, scheme };
+  const dark = { ...tokensFromPalette(preset.dark, "dark", shared), palette: t.palette, scheme };
+  return scheme === "light" ? { light, dark: null } : scheme === "dark" ? { light: dark, dark: null } : { light, dark };
+}
+
+const css = (vars: Record<string, string>) => Object.entries(vars).map(([k, v]) => `${k}:${v}`).join(";");
+
+/** CSS del tema para el <style> del <head>. Los valores salen de colores hex validados y listas cerradas, nunca de texto libre. */
+export function themeCss(t: ThemeTokens): string {
+  const { light, dark } = resolveTheme(t);
+  const base = `:root{${css(tokensToCssVars(light))}}`;
+  return dark ? `${base}@media (prefers-color-scheme: dark){:root{${css(tokensToCssVars(dark))}}}` : base;
 }

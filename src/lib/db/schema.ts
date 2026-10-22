@@ -251,3 +251,15 @@ export const orgSettings = pgTable("org_settings", {
   contactRules: jsonb("contact_rules"),
   updatedAt: ts("updated_at"),
 });
+
+/** Logo e ícono de pestaña de la organización (imágenes PNG/JPEG/WebP en base64). Si no hay, se usan los de Pibox. */
+export const brandAssets = pgTable("brand_assets", {
+  orgId: text("org_id").primaryKey().references(() => organizations.id),
+  logoData: text("logo_data"),
+  logoMime: text("logo_mime"),
+  iconData: text("icon_data"),
+  iconMime: text("icon_mime"),
+  /** true = el logo se pinta con el color principal del tema (solo sirve con fondo transparente). */
+  tint: boolean("tint").notNull().default(true),
+  updatedAt: ts("updated_at"),
+});

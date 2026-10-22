@@ -3,7 +3,8 @@ import { authConfigured, isValidSession, SESSION_COOKIE } from "@/lib/auth";
 
 export async function middleware(req: NextRequest) {
   const { pathname } = req.nextUrl;
-  if (pathname.startsWith("/login")) return NextResponse.next();
+  // El logo y el ícono de la pestaña se piden también desde la pantalla de acceso.
+  if (pathname.startsWith("/login") || pathname.startsWith("/brand/")) return NextResponse.next();
 
   // Sin credenciales configuradas: en desarrollo se permite; en producción se bloquea todo.
   if (!authConfigured()) {
