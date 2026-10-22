@@ -223,3 +223,10 @@ describe("enlace de WhatsApp sin emojis", () => {
     expect(decodeURIComponent(whatsappLink("573154051883", "Hola 👋🏽 amigo ❤️")!.split("text=")[1])).toBe("Hola amigo");
   });
 });
+
+describe("negrita al quitar emojis", () => {
+  it("no deja espacios dentro de los asteriscos", () => {
+    expect(stripEmoji("Somos *PIBOX Mensajería 🚚📦* y ayudamos")).toBe("Somos *PIBOX Mensajería* y ayudamos");
+    expect(stripEmoji("Somos *🚚 PIBOX* hoy")).toBe("Somos *PIBOX* hoy");
+  });
+});

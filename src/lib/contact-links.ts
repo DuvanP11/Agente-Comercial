@@ -1,7 +1,9 @@
 /** Quita emojis y sus modificadores. WhatsApp Web corrompe muchos emojis (salen como «�») cuando llegan por el enlace wa.me. */
 export function stripEmoji(text: string): string {
   return text.replace(/[\p{Extended_Pictographic}\p{Regional_Indicator}\u200d\ufe0f\u{1F3FB}-\u{1F3FF}\u20e3]/gu, "")
-    .replace(/[ \t]+([,.;:!?)])/g, "$1").replace(/[ \t]{2,}/g, " ").replace(/[ \t]+$/gm, "").trim();
+    .replace(/[ \t]+([,.;:!?)])/g, "$1").replace(/[ \t]{2,}/g, " ").replace(/[ \t]+$/gm, "")
+    .replace(/([*_~])[ \t]+([^*_~\n]+?)([*_~])/g, (m, a, b, c) => (a === c ? `${a}${b}${c}` : m))   // «*PIBOX *» → «*PIBOX*»: sin espacios dentro de la negrita
+    .replace(/([*_~])([^*_~\n]+?)[ \t]+([*_~])/g, (m, a, b, c) => (a === c ? `${a}${b}${c}` : m)).trim();
 }
 
 /** Enlace wa.me: abre la conversación con el texto prellenado; NO envía nada. El texto va SIN emojis (ver stripEmoji); con «Copiar mensaje» se pega completo. */
