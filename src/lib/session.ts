@@ -8,7 +8,7 @@ import { strip, userForSession, type PublicUser, type User } from "./services/us
 /** Usuario simulado para desarrollo local sin APP_PASSWORD/AUTH_SECRET (en producción nunca se usa: el middleware bloquea). */
 const DEV_ADMIN: PublicUser = {
   id: "dev", orgId: "dev", email: "dev@local", emailKey: "dev@local", username: "dev", usernameKey: "dev", name: "Desarrollo", role: "admin",
-  mustChangePassword: false, active: true, sessionVersion: 0, failedAttempts: 0, lockedUntil: null, resetRequestedAt: null, lastLoginAt: null, createdBy: null, createdAt: new Date(0),
+  mustChangePassword: false, active: true, sessionVersion: 0, failedAttempts: 0, lockedUntil: null, resetRequestedAt: null, lastLoginAt: null, phone: null, chatUserId: null, receivesLeads: false, lastLeadAt: null, createdBy: null, createdAt: new Date(0),
 };
 
 /** Usuario de la sesión actual (activo y con sesión vigente), o null. */

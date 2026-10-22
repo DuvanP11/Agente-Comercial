@@ -13,7 +13,7 @@ export const isHunter = (role: string) => role === "hunter";
 /** Ven los datos de todos los usuarios (el Hunter solo ve lo suyo). */
 export const seesAllData = (role: string) => !isHunter(role);
 
-const HUNTER_PREFIXES = ["/buscar", "/importar", "/analizar", "/captar", "/prospectos", "/clientes", "/campanas", "/metas", "/mercado", "/reportes", "/bienvenida", "/cuenta", "/api/campaigns", "/api/audit", "/api/gmail", "/brand", "/m/"];
+const HUNTER_PREFIXES = ["/buscar", "/importar", "/analizar", "/captar", "/prospectos", "/clientes", "/campanas", "/metas", "/mercado", "/reportes", "/bienvenida", "/cuenta", "/api/campaigns", "/api/audit", "/api/gmail", "/bix", "/brand", "/m/"];
 
 /** ¿Puede este rol abrir esta ruta? (el Hunter solo las de su lista; el resto, todas). */
 export function canAccessPath(role: string, pathname: string): boolean {

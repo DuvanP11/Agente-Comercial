@@ -19,7 +19,7 @@ export async function createUserAction(input: { name: string; email: string; use
   } catch (e) { return fail(e); }
 }
 
-export async function updateUserAction(id: string, input: { name?: string; email?: string; username?: string; active?: boolean; role?: string }): Promise<UserActionResult> {
+export async function updateUserAction(id: string, input: { name?: string; email?: string; username?: string; active?: boolean; role?: string; phone?: string; chatUserId?: string; receivesLeads?: boolean }): Promise<UserActionResult> {
   const admin = await requireManager();
   try {
     const db = await getDb();

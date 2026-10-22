@@ -26,6 +26,7 @@ export default async function Laboratorio({ searchParams }: { searchParams: Prom
         <h1 className="text-2xl font-bold">Laboratorio de conversación</h1>
         <p className="text-sm text-muted">Prueba en tiempo real cómo conduce el agente el primer contacto: saludo, preguntas filtro, presentación y siguiente paso. Tú haces de cliente potencial; cuando se equivoque, lo corriges y aprende para la próxima.</p>
       </header>
+      <p className="card text-sm">Lo que Bix aprende aquí es lo que usa con los leads reales por WhatsApp. Cuando conversa como quieres, márcalo como listo en <Link className="underline" href="/bix">Bix</Link>.</p>
       <HelpPanel title="Cómo funciona">
         <ol className="list-decimal space-y-1 pl-5">
           <li><b>Elige un escenario</b> (un negocio de prueba y cómo te vas a comportar) y empieza: el agente escribe el primer mensaje.</li>

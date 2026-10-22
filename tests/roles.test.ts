@@ -22,9 +22,9 @@ describe("permisos por rol (puros)", () => {
     for (const r of ["admin", "head", "it", "gerencia"]) for (const p of ["/", "/usuarios", "/auditoria", "/configuracion", "/buscar"]) expect(canAccessPath(r, p), `${r} ${p}`).toBe(true);
     expect(canAccessPath("inventado", "/buscar")).toBe(false);
   });
-  it("menú: el Hunter ve 6 de Prospección, 3 de Comercial y Reportes; los demás ven todo", () => {
+  it("menú: el Hunter ve 6 de Prospección, 4 de Comercial (con Bix) y Reportes; los demás ven todo", () => {
     const h = NAV.filter((n) => canSeeNavItem("hunter", n)).map((n) => n.slug).sort();
-    expect(h).toEqual(["analizar", "buscar", "campanas", "captar", "clientes", "importar", "mercado", "metas", "prospectos", "reportes"]);
+    expect(h).toEqual(["analizar", "bix", "buscar", "campanas", "captar", "clientes", "importar", "mercado", "metas", "prospectos", "reportes"]);
     for (const r of ["admin", "head", "it", "gerencia"]) expect(NAV.every((n) => canSeeNavItem(r, n))).toBe(true);
     expect(homeFor("hunter")).toBe("/bienvenida"); expect(homeFor("it")).toBe("/bienvenida");
     expect(isHunter("hunter") && !seesAllData("hunter") && seesAllData("it")).toBe(true);

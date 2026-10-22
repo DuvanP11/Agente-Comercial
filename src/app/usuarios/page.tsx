@@ -28,7 +28,7 @@ export default async function Usuarios() {
           <li>El administrador de arranque entra con <code>APP_PASSWORD</code> de Vercel y su identificador es <code>ADMIN_EMAIL</code> (o «admin»); no se puede desactivar, degradar ni restablecer desde aquí.</li>
         </ul>
       </HelpPanel>
-      <UsersManager canManage={canManageUsers(admin.role)} meId={admin.id} rows={rows.map((u) => ({ bootstrap: u.bootstrap, id: u.id, name: u.name, email: u.email, username: u.username, role: u.role, active: u.active, mustChangePassword: u.mustChangePassword, lastLoginAt: u.lastLoginAt?.toISOString() ?? null, resetRequestedAt: u.resetRequestedAt?.toISOString() ?? null }))} />
+      <UsersManager canManage={canManageUsers(admin.role)} meId={admin.id} rows={rows.map((u) => ({ bootstrap: u.bootstrap, id: u.id, name: u.name, email: u.email, username: u.username, role: u.role, active: u.active, mustChangePassword: u.mustChangePassword, lastLoginAt: u.lastLoginAt?.toISOString() ?? null, resetRequestedAt: u.resetRequestedAt?.toISOString() ?? null, phone: u.phone ?? "", chatUserId: u.chatUserId ?? "", receivesLeads: u.receivesLeads }))} />
     </div>
   );
 }

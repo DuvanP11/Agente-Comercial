@@ -4,7 +4,7 @@ import { ROLES, ROLE_KEYS } from "@/lib/permissions";
 import { ALLOWED_EMAIL_DOMAINS } from "@/lib/user-rules";
 import { createUserAction, resetPasswordAction, updateUserAction, type UserActionResult } from "./actions";
 
-export interface Row { bootstrap: boolean; id: string; name: string; email: string; username: string; role: string; active: boolean; lastLoginAt: string | null; resetRequestedAt: string | null; mustChangePassword: boolean }
+export interface Row { bootstrap: boolean; id: string; name: string; email: string; username: string; role: string; active: boolean; lastLoginAt: string | null; resetRequestedAt: string | null; mustChangePassword: boolean; phone: string; chatUserId: string; receivesLeads: boolean }
 
 function TempBox({ r, onClose }: { r: UserActionResult; onClose: () => void }) {
   const [copied, setCopied] = useState(false);
@@ -24,7 +24,7 @@ export function UsersManager({ rows, meId, canManage }: { rows: Row[]; meId: str
   const [form, setForm] = useState({ name: "", email: "", username: "", role: "hunter" });
   const [res, setRes] = useState<UserActionResult | null>(null);
   const [edit, setEdit] = useState<string | null>(null);
-  const [draft, setDraft] = useState({ name: "", email: "", username: "", role: "hunter" });
+  const [draft, setDraft] = useState({ name: "", email: "", username: "", role: "hunter", phone: "", chatUserId: "", receivesLeads: false });
   const [pending, start] = useTransition();
   const run = (p: Promise<UserActionResult>, after?: (r: UserActionResult) => void) => start(async () => { try { const r = await p; setRes(r); after?.(r); } catch { setRes({ error: "No se pudo completar. Recarga la página e inténtalo de nuevo." }); } });
   const fmt = (d: string | null) => (d ? new Date(d).toLocaleString("es-CO", { timeZone: "America/Bogota" }) : "Nunca"); // zona fija: igual en servidor y navegador (si no, falla la hidratación)
@@ -55,11 +55,11 @@ export function UsersManager({ rows, meId, canManage }: { rows: Row[]; meId: str
             <tr key={u.id}>
               <td><b>{u.name}</b>{u.id === meId && <span className="badge ml-2">tú</span>}{u.resetRequestedAt && <div className="badge badge-warn mt-1" title={fmt(u.resetRequestedAt)}>Pidió restablecer contraseña</div>}{u.mustChangePassword && <div className="text-xs text-muted">Debe cambiar su contraseña temporal</div>}</td>
               <td>{u.email}</td><td>{u.username}</td>
-              <td><span className="badge">{ROLES[u.role as keyof typeof ROLES] ?? u.role}{u.bootstrap ? " (arranque)" : ""}</span></td>
+              <td><span className="badge">{ROLES[u.role as keyof typeof ROLES] ?? u.role}{u.bootstrap ? " (arranque)" : ""}</span>{u.receivesLeads && <div className="badge badge-ok mt-1" title="Recibe leads de Bix en rotación">Recibe leads de Bix</div>}</td>
               <td><span className={`badge ${u.active ? "badge-ok" : "badge-bad"}`}>{u.active ? "Activo" : "Desactivado"}</span></td>
               <td className="text-sm">{fmt(u.lastLoginAt)}</td>
               <td>{canManage ? (<div className="flex flex-wrap gap-2">
-                <button className="btn" disabled={pending} onClick={() => { setEdit(edit === u.id ? null : u.id); setDraft({ name: u.name, email: u.email, username: u.username, role: u.role }); }}>{edit === u.id ? "Cerrar" : "Editar"}</button>
+                <button className="btn" disabled={pending} onClick={() => { setEdit(edit === u.id ? null : u.id); setDraft({ name: u.name, email: u.email, username: u.username, role: u.role, phone: u.phone, chatUserId: u.chatUserId, receivesLeads: u.receivesLeads }); }}>{edit === u.id ? "Cerrar" : "Editar"}</button>
                 {!u.bootstrap && u.id !== meId && <button className="btn" disabled={pending} onClick={() => { if (confirm(`¿Restablecer la contraseña de ${u.name}? Se cerrarán sus sesiones y deberá cambiarla al entrar.`)) run(resetPasswordAction(u.id)); }}>Restablecer contraseña</button>}
                 {!u.bootstrap && u.id !== meId && <button className="btn" disabled={pending} onClick={() => { if (u.active ? confirm(`¿Desactivar a ${u.name}? No podrá entrar y se cerrarán sus sesiones.`) : true) run(updateUserAction(u.id, { active: !u.active })); }}>{u.active ? "Desactivar" : "Activar"}</button>}
               </div>) : <span className="text-xs text-muted">Solo lectura</span>}
@@ -70,7 +70,17 @@ export function UsersManager({ rows, meId, canManage }: { rows: Row[]; meId: str
                     <div><label className="label" htmlFor={`e-u-${u.id}`}>Usuario</label><input id={`e-u-${u.id}`} className="input" value={draft.username} onChange={(e) => setDraft({ ...draft, username: e.target.value })} /></div>
                     {!u.bootstrap && u.id !== meId && <div><label className="label" htmlFor={`e-r-${u.id}`}>Rol</label><select id={`e-r-${u.id}`} className="input" value={draft.role} onChange={(e) => setDraft({ ...draft, role: e.target.value })}>{ROLE_KEYS.map((r) => <option key={r} value={r}>{ROLES[r]}</option>)}</select>
                       <p className="text-xs text-muted">Si cambias el rol, la persona debe volver a iniciar sesión.</p></div>}
-                    <div className="md:col-span-4"><button className="btn btn-primary" disabled={pending} onClick={() => run(updateUserAction(u.id, u.bootstrap || u.id === meId ? { name: draft.name, email: draft.email, username: draft.username } : draft), (r) => { if (r.ok) setEdit(null); })}>Guardar cambios</button></div>
+                    <div className="rounded border p-3 md:col-span-4" style={{ borderColor: "var(--color-border)" }}>
+                      <b className="text-sm">Bix (agente de WhatsApp)</b>
+                      <div className="mt-2 grid gap-2 md:grid-cols-3">
+                        <div><label className="label" htmlFor={`e-p-${u.id}`}>WhatsApp del Hunter</label><input id={`e-p-${u.id}`} className="input" inputMode="tel" placeholder="3001234567" value={draft.phone} onChange={(e) => setDraft({ ...draft, phone: e.target.value })} />
+                          <p className="text-xs text-muted">A este número Bix redirige al cliente interesado.</p></div>
+                        <div><label className="label" htmlFor={`e-c-${u.id}`}>ID de Google Chat</label><input id={`e-c-${u.id}`} className="input" inputMode="numeric" placeholder="solo números" value={draft.chatUserId} onChange={(e) => setDraft({ ...draft, chatUserId: e.target.value })} />
+                          <p className="text-xs text-muted">Para arrobarlo en el espacio de leads. Sin él, solo se escribe su nombre.</p></div>
+                        <label className="flex items-center gap-2 self-center text-sm font-semibold"><input type="checkbox" checked={draft.receivesLeads} onChange={(e) => setDraft({ ...draft, receivesLeads: e.target.checked })} /> Recibe leads de Bix (rotación)</label>
+                      </div>
+                    </div>
+                    <div className="md:col-span-4"><button className="btn btn-primary" disabled={pending} onClick={() => run(updateUserAction(u.id, u.bootstrap || u.id === meId ? { name: draft.name, email: draft.email, username: draft.username, phone: draft.phone, chatUserId: draft.chatUserId, receivesLeads: draft.receivesLeads } : draft), (r) => { if (r.ok) setEdit(null); })}>Guardar cambios</button></div>
                   </div>)}
               </td>
             </tr>))}</tbody>

@@ -1,3 +1,4 @@
+import { normalizePhone } from "../dedup/normalize";
 import { and, eq, isNull, isNotNull, or, sql } from "drizzle-orm";
 import { randomBytes, scrypt, timingSafeEqual } from "node:crypto";
 import type { Db } from "../db/client";
@@ -125,7 +126,7 @@ export async function createUser(db: Db, orgId: string, actorId: string, input: 
 }
 
 /** Edita nombre, correo, usuario y si está activo (solo el administrador). El administrador no se puede desactivar. */
-export async function updateUser(db: Db, orgId: string, actorId: string, id: string, input: { name?: string; email?: string; username?: string; active?: boolean; role?: string }): Promise<PublicUser> {
+export async function updateUser(db: Db, orgId: string, actorId: string, id: string, input: { name?: string; email?: string; username?: string; active?: boolean; role?: string; phone?: string; chatUserId?: string; receivesLeads?: boolean }): Promise<PublicUser> {
   await assertManager(db, orgId, actorId);
   const [u] = await db.select().from(users).where(and(eq(users.id, id), eq(users.orgId, orgId)));
   if (!u) throw new Error("Usuario no encontrado.");
@@ -155,6 +156,20 @@ export async function updateUser(db: Db, orgId: string, actorId: string, id: str
     set.role = input.role;
     set.sessionVersion = sql`${users.sessionVersion} + 1` as unknown as number; // con el rol nuevo debe volver a entrar
   }
+  // Datos para Bix: a este WhatsApp se redirige al cliente interesado y con este ID de Google Chat se arroba al Hunter.
+  if (input.phone !== undefined) {
+    const raw = input.phone.trim();
+    if (raw && !normalizePhone(raw)) throw new Error("El WhatsApp del Hunter no parece un número válido (ej. 3001234567).");
+    set.phone = raw ? normalizePhone(raw) : null;
+  }
+  if (input.chatUserId !== undefined) {
+    const raw = input.chatUserId.trim().replace(/^users\//, "");
+    if (raw && !/^\d{5,30}$/.test(raw)) throw new Error("El ID de Google Chat son solo números (ej. 112233445566778899000).");
+    set.chatUserId = raw || null;
+  }
+  if (input.receivesLeads !== undefined) set.receivesLeads = input.receivesLeads;
+  if (set.receivesLeads === true && !(set.phone !== undefined ? set.phone : u.phone)) throw new Error("Para recibir leads de Bix primero registra el WhatsApp del Hunter.");
+  if (set.phone === null && (set.receivesLeads ?? u.receivesLeads)) throw new Error("No puedes quitar el WhatsApp de alguien que recibe leads de Bix: primero quítalo de la rotación.");
   if (!Object.keys(set).length) return strip(u);
   const [row] = await db.update(users).set(set).where(eq(users.id, id)).returning();
   await db.insert(auditLog).values({ orgId, actor: actorId, action: "user.update", entity: id, detail: { fields: Object.keys(set).filter((k) => k !== "sessionVersion") } });

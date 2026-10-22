@@ -276,6 +276,12 @@ export const orgSettings = pgTable("org_settings", {
   training: jsonb("training"),
   /** Reglas de contacto (máximo de intentos antes de dar el prospecto por agotado). */
   contactRules: jsonb("contact_rules"),
+  /** Bix (agente de WhatsApp): «listo» lo marca una persona; mientras esté apagado no escribe a nadie. */
+  bixReady: boolean("bix_ready").notNull().default(false),
+  bixReadyBy: text("bix_ready_by"),
+  bixReadyAt: timestamp("bix_ready_at", { withTimezone: true }),
+  /** URL del webhook del espacio de Google Chat, cifrada (contiene una clave). */
+  chatWebhookEnc: text("chat_webhook_enc"),
   updatedAt: ts("updated_at"),
 });
 
@@ -314,6 +320,14 @@ export const users = pgTable("users", {
   lockedUntil: timestamp("locked_until", { withTimezone: true }),
   resetRequestedAt: timestamp("reset_requested_at", { withTimezone: true }),
   lastLoginAt: timestamp("last_login_at", { withTimezone: true }),
+  /** WhatsApp del Hunter: a este número Bix redirige al cliente interesado. */
+  phone: text("phone"),
+  /** ID de usuario de Google Chat (para arrobarlo en el espacio de leads). */
+  chatUserId: text("chat_user_id"),
+  /** Entra en la rotación de leads de Bix. */
+  receivesLeads: boolean("receives_leads").notNull().default(false),
+  /** Cuándo se le asignó el último lead (la rotación elige a quien lleva más tiempo sin recibir uno). */
+  lastLeadAt: timestamp("last_lead_at", { withTimezone: true }),
   createdBy: text("created_by"),
   createdAt: ts("created_at"),
 }, (t) => [uniqueIndex("users_email_uq").on(t.emailKey), uniqueIndex("users_username_uq").on(t.usernameKey)]);
@@ -382,3 +396,44 @@ export const gmailConnections = pgTable("gmail_connections", {
   connectedAt: ts("connected_at"),
   lastUsedAt: timestamp("last_used_at", { withTimezone: true }),
 });
+
+
+/**
+ * Conversaciones de Bix con leads reales por WhatsApp.
+ * status: queued | sent (sin respuesta aún) | talking | interested | not_interested | not_found | failed | paused
+ */
+export const bixConversations = pgTable("bix_conversations", {
+  id: id(),
+  orgId: text("org_id").notNull().references(() => organizations.id),
+  prospectId: text("prospect_id").notNull().references(() => prospects.id),
+  /** Quien puso el lead en manos de Bix (y quien lo ve, si es Hunter). */
+  ownerId: text("owner_id"),
+  phone: text("phone").notNull(),
+  businessName: text("business_name").notNull(),
+  status: text("status").notNull().default("queued"),
+  /** 0–100, solo cuando hay respuestas reales del cliente. */
+  interest: integer("interest"),
+  /** Qué respondió el cliente a las preguntas filtro: [{q, a}]. */
+  answers: jsonb("answers"),
+  assignedUserId: text("assigned_user_id"),
+  assignedName: text("assigned_name"),
+  handedOffAt: timestamp("handed_off_at", { withTimezone: true }),
+  chatNotifiedAt: timestamp("chat_notified_at", { withTimezone: true }),
+  chatError: text("chat_error"),
+  lastError: text("last_error"),
+  lastInboundAt: timestamp("last_inbound_at", { withTimezone: true }),
+  lastOutboundAt: timestamp("last_outbound_at", { withTimezone: true }),
+  createdAt: ts("created_at"),
+}, (t) => [index("bix_conv_org_idx").on(t.orgId, t.status), index("bix_conv_phone_idx").on(t.phone), index("bix_conv_prospect_idx").on(t.prospectId)]);
+
+export const bixMessages = pgTable("bix_messages", {
+  id: id(),
+  conversationId: text("conversation_id").notNull().references(() => bixConversations.id),
+  /** out (Bix) | in (el cliente) */
+  direction: text("direction").notNull(),
+  body: text("body").notNull(),
+  /** id del mensaje en WhatsApp; único para ignorar los reenvíos del webhook. */
+  waId: text("wa_id"),
+  stage: text("stage"),
+  createdAt: ts("created_at"),
+}, (t) => [index("bix_msg_conv_idx").on(t.conversationId), uniqueIndex("bix_msg_wa_uq").on(t.waId)]);
