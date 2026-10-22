@@ -1,11 +1,13 @@
 import { NextResponse } from "next/server";
 import { ensureDefaultOrg, getDb } from "@/lib/db/client";
+import { sameOrigin } from "@/lib/rate-limit";
 import { addAttachment } from "@/lib/services/campaign-media";
 
 export const dynamic = "force-dynamic";
 
 /** Sube un archivo a la campaña (multipart/form-data, campo «file»). El contenido se verifica por sus bytes, no por el nombre. */
 export async function POST(req: Request, { params }: { params: Promise<{ id: string }> }) {
+  if (!sameOrigin(req.headers)) return NextResponse.json({ error: "Petición no permitida." }, { status: 403 });
   try {
     const { id } = await params;
     const form = await req.formData();

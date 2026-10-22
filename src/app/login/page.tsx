@@ -1,4 +1,6 @@
+import { headers } from "next/headers";
 import { redirect } from "next/navigation";
+import { clientIp, tooMany } from "@/lib/rate-limit";
 import Link from "next/link";
 import { LoginForm } from "./LoginForm";
 import { authConfigured } from "@/lib/auth";
@@ -8,6 +10,8 @@ import { startSession } from "@/lib/session";
 
 async function login(formData: FormData) {
   "use server";
+  // Freno por IP además del bloqueo por cuenta: 20 intentos cada 15 minutos (también cubre usuarios que no existen).
+  if (tooMany(`login:${clientIp(await headers())}`, 20, 15 * 60_000)) redirect("/login?error=locked");
   const db = await getDb();
   const r = await authenticate(db, await ensureDefaultOrg(db), String(formData.get("identifier") ?? ""), String(formData.get("password") ?? ""));
   if (!r.ok) redirect(`/login?error=${r.reason === "locked" ? "locked" : "1"}`);

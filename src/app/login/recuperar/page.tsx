@@ -1,9 +1,12 @@
 import Link from "next/link";
+import { headers } from "next/headers";
+import { clientIp, tooMany } from "@/lib/rate-limit";
 import { ensureDefaultOrg, getDb } from "@/lib/db/client";
 import { requestReset } from "@/lib/services/users";
 
 async function request(formData: FormData) {
   "use server";
+  if (tooMany(`reset:${clientIp(await headers())}`, 5, 15 * 60_000)) return; // sin pista de que se limitó
   const db = await getDb();
   await requestReset(db, await ensureDefaultOrg(db), String(formData.get("identifier") ?? "")).catch(() => {});
 }

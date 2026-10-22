@@ -125,3 +125,22 @@ describe("administración de usuarios", () => {
     expect((await updateUser(d, o, admin.id, user.id, { active: true })).active).toBe(true);
   });
 });
+
+import { clientIp, resetRateLimit, sameOrigin, tooMany } from "@/lib/rate-limit";
+describe("frenos de ataque", () => {
+  const h = (o: Record<string, string>) => ({ get: (k: string) => o[k.toLowerCase()] ?? null });
+  it("límite por clave y ventana: el intento 21 se frena y pasado el tiempo se libera", () => {
+    resetRateLimit();
+    for (let i = 1; i <= 20; i++) expect(tooMany("ip1", 20, 900_000, 1000 + i)).toBe(false);
+    expect(tooMany("ip1", 20, 900_000, 2000)).toBe(true);
+    expect(tooMany("ip2", 20, 900_000, 2000)).toBe(false);                 // otra IP no se ve afectada
+    expect(tooMany("ip1", 20, 900_000, 1000 + 900_001 + 30)).toBe(false);  // ya pasó la ventana
+  });
+  it("IP del proxy y control de origen", () => {
+    expect(clientIp(h({ "x-forwarded-for": "181.1.2.3, 10.0.0.1" }))).toBe("181.1.2.3"); expect(clientIp(h({}))).toBe("desconocida");
+    expect(sameOrigin(h({ origin: "https://app.pibox.app", host: "app.pibox.app" }))).toBe(true);
+    expect(sameOrigin(h({ origin: "https://evil.com", host: "app.pibox.app" }))).toBe(false);
+    expect(sameOrigin(h({ origin: "no es url", host: "app.pibox.app" }))).toBe(false);
+    expect(sameOrigin(h({ host: "app.pibox.app" }))).toBe(true);
+  });
+});
