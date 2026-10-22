@@ -1,7 +1,10 @@
 "use server";
+import { requireUser } from "@/lib/session";
+import { viewerOf } from "@/lib/services/scope";
 import { ensureDefaultOrg, getDb } from "@/lib/db/client";
 import { ingestProspects, type IngestOutcome } from "@/lib/services/prospects";
 import { previewProspects, suggestProspectMapping, toRawProspects, type ProspectMapping, type ProspectPreviewRow } from "@/lib/services/prospect-import";
+import { track } from "@/lib/track";
 import { parseTable } from "@/lib/services/tabular";
 
 export interface ProspectImportState {
@@ -33,7 +36,9 @@ export async function commitProspectsAction(_: ProspectImportState, fd: FormData
     const preview = previewProspects(table.rows, mapping);
     const raws = toRawProspects(preview, file.name);
     const db = await getDb();
-    const outcomes = await ingestProspects(db, await ensureDefaultOrg(db), raws);
+    const me = await requireUser();
+    const outcomes = await ingestProspects(db, await ensureDefaultOrg(db), raws, undefined, viewerOf(me));
+    await track("import", `Importó prospectos desde «${file.name}»`, { archivo: file.name, filas: preview.length, guardados: outcomes.length, omitidas: preview.length - raws.length });
     return { step: "done", outcomes, skipped: preview.length - raws.length };
   } catch (e) { return { step: "error", error: e instanceof Error ? e.message : "Error guardando." }; }
 }

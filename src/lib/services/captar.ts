@@ -5,17 +5,18 @@ import { activities, campaignProspects, campaigns, evidence, prospects } from ".
 import { prepareApproach, type Approach } from "../skills/approach";
 import type { StoredScore } from "./analysis";
 import { addProspects, createCampaign } from "./campaigns";
+import { assertProspectAccess, campaignVisible, prospectVisible, visibleProspectIds, type Viewer } from "./scope";
 
 /**
  * Prospectos listos para abordar: sin "No contactar", sin duplicado pendiente y que no estén ya
  * en una campaña activa. Primero los calificados y los de mayor prioridad.
  */
-export async function captarCandidates(db: Db, orgId: string) {
+export async function captarCandidates(db: Db, orgId: string, viewer?: Viewer) {
   const busy = new Set((await db.select({ pid: campaignProspects.prospectId }).from(campaignProspects)
     .innerJoin(campaigns, eq(campaigns.id, campaignProspects.campaignId))
     .where(and(eq(campaignProspects.orgId, orgId), eq(campaigns.status, "active")))).map((r) => r.pid));
   const rows = await db.select().from(prospects).where(and(
-    eq(prospects.orgId, orgId), eq(prospects.doNotContact, false), inArray(prospects.status, ["new", "qualified"]),
+    eq(prospects.orgId, orgId), eq(prospects.doNotContact, false), inArray(prospects.status, ["new", "qualified"]), prospectVisible(viewer),
   )).orderBy(desc(prospects.createdAt)).limit(500);
   return rows
     .filter((p) => !busy.has(p.id))
@@ -32,23 +33,26 @@ export async function captarCandidates(db: Db, orgId: string) {
 export interface StartInput { prospectIds: string[]; campaignId?: string; newName?: string }
 
 /** Lleva los prospectos elegidos a una campaña existente o a una nueva con el mensaje base. */
-export async function startCaptation(db: Db, orgId: string, input: StartInput, actor: string) {
+export async function startCaptation(db: Db, orgId: string, input: StartInput, actor: string, viewer?: Viewer) {
+  if (!input.prospectIds.length) throw new Error("Marca al menos un prospecto.");
+  if (viewer) input = { ...input, prospectIds: await visibleProspectIds(db, orgId, viewer, input.prospectIds) }; // el Hunter solo lleva prospectos suyos
   if (!input.prospectIds.length) throw new Error("Marca al menos un prospecto.");
   let campaignId = input.campaignId;
   if (campaignId) {
-    const [c] = await db.select().from(campaigns).where(and(eq(campaigns.id, campaignId), eq(campaigns.orgId, orgId)));
+    const [c] = await db.select().from(campaigns).where(and(eq(campaigns.id, campaignId), eq(campaigns.orgId, orgId), campaignVisible(viewer)));
     if (!c || c.status === "closed") throw new Error("La campaña elegida no existe o está cerrada.");
   } else {
     const name = (input.newName ?? "").trim();
     if (name.length < 3) throw new Error("Ponle un nombre a la campaña nueva (mínimo 3 caracteres) o elige una existente.");
-    campaignId = (await createCampaign(db, orgId, { name, objective: "Captación", template: DEFAULT_TEMPLATE }, actor)).id;
+    campaignId = (await createCampaign(db, orgId, { name, objective: "Captación", template: DEFAULT_TEMPLATE }, actor, viewer?.id)).id;
   }
-  const r = await addProspects(db, orgId, campaignId, input.prospectIds, actor);
+  const r = await addProspects(db, orgId, campaignId, input.prospectIds, actor, viewer);
   return { campaignId, added: r.added, skipped: r.skipped };
 }
 
 /** Plan de acercamiento: junta los datos reales del prospecto y aplica las reglas de las skills. */
-export async function approachFor(db: Db, orgId: string, prospectId: string) {
+export async function approachFor(db: Db, orgId: string, prospectId: string, viewer?: Viewer) {
+  if (viewer) await assertProspectAccess(db, orgId, viewer, prospectId);
   const [p] = await db.select().from(prospects).where(and(eq(prospects.id, prospectId), eq(prospects.orgId, orgId)));
   if (!p) throw new Error("Prospecto no encontrado.");
   const [ev, acts] = await Promise.all([

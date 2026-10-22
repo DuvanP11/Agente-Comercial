@@ -1,4 +1,6 @@
 "use server";
+import { guardProspect } from "@/lib/guard";
+import { track } from "@/lib/track";
 import { revalidatePath } from "next/cache";
 import { ensureDefaultOrg, getDb } from "@/lib/db/client";
 import { saveAssessment, setQualification } from "@/lib/services/analysis";
@@ -20,9 +22,11 @@ export async function saveAction(prospectId: string, _: AnalysisState, fd: FormD
     };
   }
   try {
+    await guardProspect(prospectId);
     const db = await getDb();
     const s = await saveAssessment(db, await ensureDefaultOrg(db), prospectId, input, "usuario");
     revalidatePath(`/analizar/${prospectId}`);
+    await track("action", "Guardó la valoración de un prospecto", { prospecto: prospectId, prioridad: s.priority }, `/analizar/${prospectId}`);
     return { ok: s.priority === null ? "Guardado. Información insuficiente para calcular prioridad." : `Guardado. Prioridad ${s.priority}.` };
   } catch (e) {
     return { error: e instanceof Error ? e.message : "No se pudo guardar." };
@@ -31,7 +35,7 @@ export async function saveAction(prospectId: string, _: AnalysisState, fd: FormD
 
 export async function qualifyAction(prospectId: string, qualified: boolean) {
   const db = await getDb();
-  try { await setQualification(db, await ensureDefaultOrg(db), prospectId, qualified, "usuario"); }
+  try { await guardProspect(prospectId); await setQualification(db, await ensureDefaultOrg(db), prospectId, qualified, "usuario"); }
   catch (e) { return e instanceof Error ? e.message : "Error"; }
   revalidatePath(`/analizar/${prospectId}`);
   return null;
@@ -43,8 +47,10 @@ export interface ProposeResult { ok: boolean; error?: string; warnings: string[]
 /** La IA propone la valoración. NO se guarda nada: el formulario la carga y la persona decide. */
 export async function proposeAction(prospectId: string): Promise<ProposeResult> {
   try {
+    await guardProspect(prospectId);
     const db = await getDb();
     const r = await proposeAssessment(db, await ensureDefaultOrg(db), prospectId, providerFromEnv(), "usuario");
+    if (r.ok) await track("action", "Pidió una propuesta de valoración a la IA", { prospecto: prospectId }, `/analizar/${prospectId}`);
     return { ok: r.ok, error: r.error, warnings: r.warnings, proposal: r.output };
   } catch (e) {
     console.error("proposeAction falló:", e);

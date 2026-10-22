@@ -2,12 +2,16 @@ import Link from "next/link";
 import { notFound } from "next/navigation";
 import { desc, eq } from "drizzle-orm";
 import { getDb } from "@/lib/db/client";
+import { seesAllData } from "@/lib/permissions";
+import { requireUser } from "@/lib/session";
 import { activities, clients, duplicateReviews, evidence, prospects } from "@/lib/db/schema";
 import { findContradictions } from "@/lib/evidence/types";
 import { duplicateMessage } from "@/lib/dedup/match";
 import { mailtoLink, mapSearchLink, phoneLinks, safeWebUrl } from "@/lib/contact-links";
 import { CRITERION_LABELS, type ScoreResult } from "@/lib/scoring/score";
 import { SEARCH_ID } from "@/lib/services/searches";
+import { OwnerAssign } from "./OwnerAssign";
+import { users } from "@/lib/db/schema";
 import { ContactManager } from "./ContactManager";
 import { stateOf } from "@/lib/services/contact-tracking";
 import { getContactRules } from "@/lib/services/settings";
@@ -35,19 +39,26 @@ export default async function Ficha({ params, searchParams }: { params: Promise<
   // Solo se acepta un id de búsqueda con formato válido (nunca una URL arbitraria).
   const back = from && SEARCH_ID.test(from) ? { href: `/buscar?search=${from}`, label: "← Volver a la búsqueda" } : { href: "/prospectos", label: "← Volver a prospectos" };
   const db = await getDb();
+  const me = await requireUser();
   const [p] = await db.select().from(prospects).where(eq(prospects.id, id));
-  if (!p) notFound();
+  if (!p || (!seesAllData(me.role) && p.ownerId !== me.id)) notFound(); // el Hunter no puede abrir prospectos de otras personas
   const [ev, revs, acts] = await Promise.all([
     db.select().from(evidence).where(eq(evidence.entityId, id)),
     db.select().from(duplicateReviews).where(eq(duplicateReviews.prospectId, id)),
     db.select().from(activities).where(eq(activities.prospectId, id)).orderBy(desc(activities.createdAt)),
   ]);
+  const people = seesAllData(me.role) ? await db.select({ id: users.id, name: users.name }).from(users).where(eq(users.active, true)).orderBy(users.name) : [];
   const refNames = new Map<string, string>();
+  const foreignRefs = new Set<string>(); // coincidencias con prospectos de otra persona: el Hunter no ve su ficha ni sus datos
   for (const r of revs) {
-    const [row] = r.referenceType === "client"
-      ? await db.select({ n: clients.name }).from(clients).where(eq(clients.id, r.referenceId))
-      : await db.select({ n: prospects.name }).from(prospects).where(eq(prospects.id, r.referenceId));
-    refNames.set(r.id, row?.n ?? "(registro no encontrado)");
+    if (r.referenceType === "client") {
+      const [row] = await db.select({ n: clients.name }).from(clients).where(eq(clients.id, r.referenceId));
+      refNames.set(r.id, row?.n ?? "(registro no encontrado)");
+    } else {
+      const [row] = await db.select({ n: prospects.name, o: prospects.ownerId }).from(prospects).where(eq(prospects.id, r.referenceId));
+      refNames.set(r.id, row?.n ?? "(registro no encontrado)");
+      if (row && !seesAllData(me.role) && row.o !== me.id) foreignRefs.add(r.id);
+    }
   }
   const contradictions = findContradictions(ev.map((e) => ({ field: e.field, value: e.observedValue, sourceName: e.sourceName })));
   const score = p.scoreJson as ScoreResult | null;
@@ -63,6 +74,8 @@ export default async function Ficha({ params, searchParams }: { params: Promise<
         <p className="text-sm text-muted">{p.category} · {p.city} · fuente {p.sourceName} · consultado {p.consultedAt.toLocaleDateString("es-CO")}</p>
       </header>
 
+      {seesAllData(me.role) && <section className="card" aria-label="Responsable"><OwnerAssign prospectId={id} ownerId={p.ownerId} people={people} /><p className="mt-1 text-xs text-muted">Es quien lo trabaja. Un Hunter solo ve los prospectos que tiene asignados.</p></section>}
+
       {p.doNotContact && <p role="alert" className="card badge-bad font-semibold">NO CONTACTAR: {p.doNotContactReason}. Está bloqueado en campañas y WhatsApp.</p>}
 
       {revs.map((r) => (
@@ -70,7 +83,7 @@ export default async function Ficha({ params, searchParams }: { params: Promise<
           <p className={`font-semibold ${r.level === "exact" ? "badge-bad" : "badge-warn"}`}>
             {duplicateMessage(r.level as "exact" | "probable", r.referenceType as "client" | "prospect")}
           </p>
-          <p className="text-sm">Coincide con {r.referenceType === "client" ? "un cliente existente" : "un prospecto que ya tenías guardado"}: {r.referenceType === "prospect" ? <Link className="font-semibold underline" href={`/prospectos/${r.referenceId}`}>{refNames.get(r.id)}</Link> : <b>{refNames.get(r.id)}</b>}. Campos: {(r.reasons as { field: string; candidateValue: string; referenceValue: string }[]).map((x) => `${x.field} (${x.candidateValue} ↔ ${x.referenceValue})`).join("; ")}.</p>
+          <p className="text-sm">Coincide con {r.referenceType === "client" ? "un cliente existente" : "un prospecto que ya tenías guardado"}: {r.referenceType === "prospect" && !foreignRefs.has(r.id) ? <Link className="font-semibold underline" href={`/prospectos/${r.referenceId}`}>{refNames.get(r.id)}</Link> : <b>{refNames.get(r.id)}</b>}{foreignRefs.has(r.id) ? " (asignado a otra persona)" : ""}. Campos: {foreignRefs.has(r.id) ? (r.reasons as { field: string }[]).map((x) => x.field).join(", ") : (r.reasons as { field: string; candidateValue: string; referenceValue: string }[]).map((x) => `${x.field} (${x.candidateValue} ↔ ${x.referenceValue})`).join("; ")}.</p>
           <p className="text-xs text-muted">Decisión: {r.decision}{r.decidedBy ? ` por ${r.decidedBy}` : ""}</p>
           <div className="flex flex-wrap gap-2">
             {(["excluded", "linked", "not_duplicate"] as const).map((d) => (

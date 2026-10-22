@@ -1,4 +1,5 @@
 "use server";
+import { track } from "@/lib/track";
 import { requireNotHunter } from "@/lib/session";
 import { revalidatePath } from "next/cache";
 import { ensureDefaultOrg, getDb } from "@/lib/db/client";
@@ -14,6 +15,7 @@ export async function saveBrandAction(kind: string, dataUrl: string): Promise<Br
     const db = await getDb();
     await saveBrandAsset(db, await ensureDefaultOrg(db), kind, dataUrl, "usuario");
     revalidatePath("/", "layout");
+    await track("admin", `Cambió el ${kind === "logo" ? "logo" : "ícono de la pestaña"}`, undefined, "/apariencia");
     return { ok: "Imagen guardada. La pestaña del navegador puede tardar unos segundos en actualizar su ícono." };
   } catch (e) { return { error: e instanceof Error ? e.message : "No se pudo guardar." }; }
 }

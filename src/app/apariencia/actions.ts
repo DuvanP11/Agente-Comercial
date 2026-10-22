@@ -1,4 +1,5 @@
 "use server";
+import { track } from "@/lib/track";
 import { requireNotHunter } from "@/lib/session";
 import { and, eq } from "drizzle-orm";
 import { revalidatePath } from "next/cache";
@@ -15,6 +16,7 @@ export async function saveTheme(name: string, tokens: unknown) {
   await db.update(themeSettings).set({ isActive: false }).where(eq(themeSettings.orgId, org));
   await db.insert(themeSettings).values({ orgId: org, name: name.slice(0, 60) || "Mi tema", tokens: parsed.data, isActive: true });
   revalidatePath("/", "layout");
+  await track("admin", "Guardó un tema de colores", undefined, "/apariencia");
   return { ok: true };
 }
 

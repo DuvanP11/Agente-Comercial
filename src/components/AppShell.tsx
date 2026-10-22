@@ -26,6 +26,12 @@ export function AppShell({ items, brand, user, logout, home, children }: {
 
   useEffect(() => { try { setCollapsed(localStorage.getItem(STORAGE) === "1"); } catch { /* sin almacenamiento: queda expandido */ } }, []);
   useEffect(() => setMobileOpen(false), [path]);
+  // Auditoría: cada pantalla que se abre y cada clic en una opción del menú se reporta al servidor (sin datos de lo que se ve).
+  const lastView = useRef("");
+  const report = (kind: "view" | "click", p: string, label?: string) => {
+    try { void fetch("/api/audit/event", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ kind, path: p, label }), keepalive: true }); } catch { /* el registro nunca estorba */ }
+  };
+  useEffect(() => { if (path && path !== lastView.current) { lastView.current = path; report("view", path); } }, [path]);
   const toggle = () => setCollapsed((c) => { const n = !c; try { localStorage.setItem(STORAGE, n ? "1" : "0"); } catch { /* opcional */ } return n; });
 
   // «/» enfoca el buscador (si no se está escribiendo en otro campo).
@@ -83,7 +89,7 @@ export function AppShell({ items, brand, user, logout, home, children }: {
                     const active = isActive(n);
                     return (
                       <li key={n.slug}>
-                        <Link href={n.href} aria-current={active ? "page" : undefined}
+                        <Link href={n.href} aria-current={active ? "page" : undefined} onClick={() => report("click", n.href, n.label)}
                           onMouseEnter={(e) => !wide && showTip(e, n.label, n.icon ?? "dashboard", STATUS_LABEL[n.status])} onMouseLeave={() => setTip(null)} onFocus={(e) => !wide && showTip(e, n.label, n.icon ?? "dashboard", STATUS_LABEL[n.status])} onBlur={() => setTip(null)}
                           className={`flex items-center gap-3 rounded-[var(--radius)] px-3 py-2 text-sm ${wide ? "" : "justify-center px-0"} ${active ? "" : "hover:bg-surface-2"}`}
                           style={active ? { background: "var(--color-primary)", color: "var(--color-on-primary)" } : undefined}>

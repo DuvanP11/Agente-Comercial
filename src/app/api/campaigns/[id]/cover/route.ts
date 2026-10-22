@@ -1,3 +1,4 @@
+import { campaignAccessible } from "@/lib/guard";
 import { ensureDefaultOrg, getDb } from "@/lib/db/client";
 import { getCover } from "@/lib/services/campaign-media";
 
@@ -5,6 +6,7 @@ export const dynamic = "force-dynamic";
 
 export async function GET(req: Request, { params }: { params: Promise<{ id: string }> }) {
   const { id } = await params;
+  if (!(await campaignAccessible(id))) return new Response("Sin portada", { status: 404 });
   const db = await getDb();
   const c = await getCover(db, await ensureDefaultOrg(db), id);
   if (!c) return new Response("Sin portada", { status: 404 });

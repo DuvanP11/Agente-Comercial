@@ -1,4 +1,6 @@
 import Link from "next/link";
+import { requireUser } from "@/lib/session";
+import { viewerOf } from "@/lib/services/scope";
 import { notFound } from "next/navigation";
 import { ensureDefaultOrg, getDb } from "@/lib/db/client";
 import { approachFor } from "@/lib/services/captar";
@@ -13,9 +15,10 @@ function List({ items, ordered = false }: { items: string[]; ordered?: boolean }
 
 export default async function Plan({ params }: { params: Promise<{ id: string }> }) {
   const { id } = await params;
+  const viewer = viewerOf(await requireUser());
   const db = await getDb();
   let r;
-  try { r = await approachFor(db, await ensureDefaultOrg(db), id); } catch { notFound(); }
+  try { r = await approachFor(db, await ensureDefaultOrg(db), id, viewer); } catch { notFound(); }
   const { prospect: p, approach: a, score } = r;
   const tone = a.nextAction.code === "blocked" || a.nextAction.code === "resolve_duplicate" ? "badge-bad" : a.nextAction.code === "add_to_campaign" ? "badge-ok" : "badge-warn";
   return (

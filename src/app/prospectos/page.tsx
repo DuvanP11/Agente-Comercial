@@ -1,7 +1,11 @@
 import Link from "next/link";
-import { desc, eq } from "drizzle-orm";
+import { and, desc, eq } from "drizzle-orm";
 import { ensureDefaultOrg, getDb } from "@/lib/db/client";
-import { prospects } from "@/lib/db/schema";
+import { prospects, users } from "@/lib/db/schema";
+import { canManageUsers } from "@/lib/permissions";
+import { requireUser } from "@/lib/session";
+import { prospectVisible, viewerOf } from "@/lib/services/scope";
+import { AssignUnowned } from "./AssignUnowned";
 import { mailtoLink, phoneLinks, safeWebUrl } from "@/lib/contact-links";
 import { CONTACT_FILTER_LABEL, isContactFilter, matchesContactFilter, type ContactFilter } from "@/lib/contact-filter";
 import { contactState, STATE_LABEL, type ContactStateKey } from "@/lib/contact-tracking";
@@ -21,15 +25,23 @@ const GESTION = Object.keys(STATE_LABEL) as ContactStateKey[];
 const isGestion = (v: unknown): v is ContactStateKey => typeof v === "string" && (GESTION as string[]).includes(v);
 const TONE: Record<string, string> = { interested: "badge-ok", not_interested: "badge-bad", exhausted: "badge-bad", no_info: "badge-warn", no_answer: "badge-warn" };
 
-export default async function Prospectos({ searchParams }: { searchParams: Promise<{ status?: string; contacto?: string; gestion?: string }> }) {
+export default async function Prospectos({ searchParams }: { searchParams: Promise<{ status?: string; contacto?: string; gestion?: string; dueno?: string }> }) {
   const sp = await searchParams;
+  const me = await requireUser();
+  const viewer = viewerOf(me);
   const status = sp.status && sp.status in STAGE ? sp.status : undefined;
   const contacto: ContactFilter = isContactFilter(sp.contacto) ? sp.contacto : "all";
   const gestion = isGestion(sp.gestion) ? sp.gestion : undefined;
   const db = await getDb();
   const org = await ensureDefaultOrg(db);
   const rules = await getContactRules(db, org);
-  const all = await db.select().from(prospects).where(eq(prospects.orgId, org)).orderBy(desc(prospects.createdAt)).limit(500);
+  const people = viewer.seesAll ? await db.select({ id: users.id, name: users.name }).from(users).where(eq(users.active, true)).orderBy(users.name) : [];
+  const nameOf = new Map(people.map((x) => [x.id, x.name]));
+  const dueno = viewer.seesAll ? (sp.dueno === "mios" ? me.id : sp.dueno === "sin" ? "sin" : sp.dueno && nameOf.has(sp.dueno) ? sp.dueno : undefined) : undefined;
+  // El Hunter solo ve los suyos; los demás roles ven todos y pueden filtrar por responsable.
+  const all = (await db.select().from(prospects).where(and(eq(prospects.orgId, org), prospectVisible(viewer))).orderBy(desc(prospects.createdAt)).limit(500))
+    .filter((p) => !dueno || (dueno === "sin" ? !p.ownerId : p.ownerId === dueno));
+  const sinDueno = viewer.seesAll ? all.filter((p) => !p.ownerId).length : 0;
   // Se calcula una sola vez por prospecto: etapa, estado de contacto y datos de contacto (las claves ya validadas: un dato mal escrito no cuenta).
   const items = all.map((p) => ({ p, st: contactState({ outcome: p.contactOutcome, attempts: p.contactAttempts, hasContactData: hasContactData(p) }, rules), keys: { phone: p.phoneKey || null, email: p.emailKey || null, website: p.domainKey || null } }));
   const live = items.filter((x) => x.p.status !== "excluded_duplicate");
@@ -49,8 +61,9 @@ export default async function Prospectos({ searchParams }: { searchParams: Promi
   const maxA = rules.maxAttempts;
   const dist = Array.from({ length: maxA + 1 }, (_, n) => ({ label: n === 0 ? "0 (sin intentos)" : n === maxA ? `${n} (máximo)` : String(n), value: live.filter((x) => Math.min(x.p.contactAttempts, maxA) === n).length }));
 
-  const href = (o: { status?: string; contacto?: ContactFilter; gestion?: string }) => {
+  const href = (o: { status?: string; contacto?: ContactFilter; gestion?: string; dueno?: string }) => {
     const q = new URLSearchParams();
+    if (o.dueno ?? sp.dueno) q.set("dueno", (o.dueno ?? sp.dueno)!);
     if (o.status) q.set("status", o.status);
     if (o.contacto && o.contacto !== "all") q.set("contacto", o.contacto);
     if (o.gestion) q.set("gestion", o.gestion);
@@ -65,7 +78,7 @@ export default async function Prospectos({ searchParams }: { searchParams: Promi
     <div className="space-y-4">
       <header className="space-y-1">
         <h1 className="text-2xl font-bold">Base de prospectos</h1>
-        <p className="text-sm text-muted">Todo lo que has descubierto o importado, y qué ha pasado con cada uno: si ya se contactó, cuántas veces y cómo respondió.</p>
+        <p className="text-sm text-muted">{viewer.seesAll ? "Todo lo que el equipo ha descubierto o importado" : "Lo que tú has descubierto o importado"}, y qué ha pasado con cada uno: si ya se contactó, cuántas veces y cómo respondió.</p>
       </header>
 
       <HelpPanel title="Cómo funciona esta base (de lead a cliente)">
@@ -110,7 +123,21 @@ export default async function Prospectos({ searchParams }: { searchParams: Promi
         </section>
       )}
 
+      {viewer.seesAll && canManageUsers(me.role) && sinDueno > 0 && <AssignUnowned count={sinDueno} people={people} meId={me.id} />}
+
       <section className="space-y-2" aria-label="Filtros">
+        {viewer.seesAll && (
+          <nav aria-label="Filtrar por responsable" className="flex flex-wrap items-center gap-2">
+            <span className="text-sm text-muted">Responsable:</span>
+            <Link className="btn" style={pill(!dueno)} href={href({ status, contacto, gestion, dueno: "" })}>Todos</Link>
+            <Link className="btn" style={pill(dueno === me.id)} href={href({ status, contacto, gestion, dueno: "mios" })}>Míos</Link>
+            <Link className="btn" style={pill(dueno === "sin")} href={href({ status, contacto, gestion, dueno: "sin" })}>Sin asignar</Link>
+            <form method="get" className="flex items-center gap-2">
+              {status && <input type="hidden" name="status" value={status} />}{gestion && <input type="hidden" name="gestion" value={gestion} />}{contacto !== "all" && <input type="hidden" name="contacto" value={contacto} />}
+              <select name="dueno" aria-label="Elegir persona" className="input !w-auto" defaultValue={dueno && dueno !== "sin" && dueno !== me.id ? dueno : ""}><option value="">Otra persona…</option>{people.filter((x) => x.id !== me.id).map((x) => <option key={x.id} value={x.id}>{x.name}</option>)}</select>
+              <button className="btn">Ver</button>
+            </form>
+          </nav>)}
         <nav aria-label="Filtrar por etapa" className="flex flex-wrap items-center gap-2">
           <span className="text-sm text-muted">Etapa:</span>
           <Link className="btn" style={pill(!status)} href={href({ contacto, gestion })}>Todos</Link>
@@ -134,7 +161,7 @@ export default async function Prospectos({ searchParams }: { searchParams: Promi
       <div className="card overflow-x-auto">
         {rows.length === 0 ? <p className="text-sm text-muted">No hay prospectos con estos filtros. Prueba otros, o ejecuta una búsqueda en “Buscar clientes”.</p> : (
           <table className="table">
-            <thead><tr><th>Empresa</th><th>Etapa</th><th>Gestión de contacto</th><th>Intentos</th><th>Teléfono</th><th>Correo / web</th><th>Ciudad · rubro</th></tr></thead>
+            <thead><tr><th>Empresa</th><th>Etapa</th><th>Gestión de contacto</th><th>Intentos</th><th>Teléfono</th><th>Correo / web</th><th>Ciudad · rubro</th>{viewer.seesAll && <th>Responsable</th>}</tr></thead>
             <tbody>{rows.map(({ p, st }) => {
               const web = safeWebUrl(p.website), mail = mailtoLink(p.email);
               return (
@@ -146,6 +173,7 @@ export default async function Prospectos({ searchParams }: { searchParams: Promi
                   <td className="text-sm">{p.phone ? phoneLinks(p.phone).map((x, i) => <div key={i} className="whitespace-nowrap">{x.href ? <a className="underline" href={x.href}>{x.text}</a> : x.text}</div>) : <span className="text-muted">—</span>}</td>
                   <td className="text-sm">{p.email ? (mail ? <a className="break-all underline" href={mail}>{p.email}</a> : p.email) : null}{p.website ? <div>{web ? <a className="break-all underline" target="_blank" rel="noopener noreferrer" href={web}>{p.website}</a> : p.website}</div> : null}{!p.email && !p.website && <span className="text-muted">—</span>}</td>
                   <td className="text-sm">{p.city}<div className="text-xs text-muted">{p.category}</div></td>
+                  {viewer.seesAll && <td className="text-sm">{p.ownerId ? nameOf.get(p.ownerId) ?? "—" : <span className="badge badge-warn">Sin asignar</span>}</td>}
                 </tr>);
             })}</tbody>
           </table>

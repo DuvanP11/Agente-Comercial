@@ -1,4 +1,6 @@
 import { ensureDefaultOrg, getDb } from "@/lib/db/client";
+import { requireUser } from "@/lib/session";
+import { viewerOf } from "@/lib/services/scope";
 import { normalizePhone } from "@/lib/dedup/normalize";
 import { listCampaigns } from "@/lib/services/campaigns";
 import { captarCandidates } from "@/lib/services/captar";
@@ -7,9 +9,10 @@ import { CaptarPicker } from "./CaptarPicker";
 export const dynamic = "force-dynamic";
 
 export default async function Captar() {
+  const viewer = viewerOf(await requireUser());
   const db = await getDb();
   const org = await ensureDefaultOrg(db);
-  const [cands, camps] = await Promise.all([captarCandidates(db, org), listCampaigns(db, org)]);
+  const [cands, camps] = await Promise.all([captarCandidates(db, org, viewer), listCampaigns(db, org, viewer)]);
   return (
     <div className="space-y-4">
       <header>

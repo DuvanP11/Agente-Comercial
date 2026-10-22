@@ -4,14 +4,15 @@ import type { Db } from "../db/client";
 import { campaignProspects, prospects, searches } from "../db/schema";
 import type { MarketRow, SearchRow } from "../market";
 import type { StoredScore } from "./analysis";
+import { prospectVisible, type Viewer } from "./scope";
 
 /** Si un prospecto está en varias campañas se toma su etapa más avanzada. */
 const RANK: Record<CpStatus, number> = {
   pending: 0, do_not_contact: 1, not_interested: 2, lost: 2, contacted: 2, replied: 3, meeting: 4, proposal: 5, won: 6,
 };
 
-export async function loadMarket(db: Db, orgId: string, opts: { since: Date | null; includeDemo: boolean }) {
-  const pRows = await db.select().from(prospects).where(and(eq(prospects.orgId, orgId), ...(opts.since ? [gte(prospects.createdAt, opts.since)] : [])));
+export async function loadMarket(db: Db, orgId: string, opts: { since: Date | null; includeDemo: boolean; viewer?: Viewer }) {
+  const pRows = await db.select().from(prospects).where(and(eq(prospects.orgId, orgId), prospectVisible(opts.viewer), ...(opts.since ? [gte(prospects.createdAt, opts.since)] : [])));
   const cps = await db.select({ pid: campaignProspects.prospectId, status: campaignProspects.status }).from(campaignProspects).where(eq(campaignProspects.orgId, orgId));
   const best = new Map<string, CpStatus>();
   for (const c of cps) {

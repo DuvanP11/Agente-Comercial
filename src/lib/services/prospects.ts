@@ -15,12 +15,14 @@ export interface IngestOutcome {
   email?: string | null;
   sourceUrl?: string | null;
   status: "new" | "excluded_duplicate" | "needs_review" | "already_stored";
+  /** Coincide con algo que es de otra persona: quien busca no puede abrirlo (el Hunter solo ve lo suyo). */
+  foreign?: boolean;
   message?: string;
   matchedWith?: { type: "client" | "prospect"; id: string; name: string; address?: string | null; phone?: string | null; website?: string | null };
   reasons?: unknown;
 }
 
-export type Reference = CompanyRecord & { refType: "client" | "prospect" };
+export type Reference = CompanyRecord & { refType: "client" | "prospect"; ownerId?: string | null };
 
 /** Clientes y prospectos contra los que se compara cualquier candidato. */
 export async function loadReferences(db: Db, orgId: string): Promise<Reference[]> {
@@ -35,7 +37,7 @@ export async function loadReferences(db: Db, orgId: string): Promise<Reference[]
     ...prospectRows.map((p) => ({
       refType: "prospect" as const, id: p.id,
       origin: (p.status === "contacted" ? "contacted" : p.status === "archived" ? "archived" : "prospect") as CompanyRecord["origin"],
-      name: p.name, website: p.website, phone: p.phone, email: p.email, address: p.address, city: p.city, sourceId: p.sourceId,
+      name: p.name, website: p.website, phone: p.phone, email: p.email, address: p.address, city: p.city, sourceId: p.sourceId, ownerId: p.ownerId,
     })),
   ];
 
@@ -46,7 +48,8 @@ export async function loadReferences(db: Db, orgId: string): Promise<Reference[]
  * - Coincidencia exacta  → se guarda con estado excluded_duplicate (queda el rastro, no se pierde).
  * - Coincidencia probable → needs_review; NO se fusiona nada automáticamente.
  */
-export async function ingestProspects(db: Db, orgId: string, raws: RawProspect[], searchId?: string): Promise<IngestOutcome[]> {
+export async function ingestProspects(db: Db, orgId: string, raws: RawProspect[], searchId?: string, owner?: { id: string; seesAll: boolean }): Promise<IngestOutcome[]> {
+  const foreignTo = (refOwner: string | null | undefined) => !!owner && !owner.seesAll && refOwner !== owner.id;
   const refs = await loadReferences(db, orgId);
   const outcomes: IngestOutcome[] = [];
   const shown = (raw: RawProspect) => ({ category: raw.category, address: raw.address, phone: raw.phone, website: raw.website, email: raw.email, sourceUrl: raw.sourceUrl });
@@ -60,7 +63,7 @@ export async function ingestProspects(db: Db, orgId: string, raws: RawProspect[]
     const status = !top ? "new" : top.level === "exact" ? "excluded_duplicate" : "needs_review";
 
     const [row] = await db.insert(prospects).values({
-      orgId, searchId, name: raw.name, category: raw.category, website: raw.website, phone: raw.phone,
+      orgId, searchId, ownerId: owner?.id ?? null, name: raw.name, category: raw.category, website: raw.website, phone: raw.phone,
       email: raw.email, address: raw.address, city: raw.city, sourceName: raw.sourceName, sourceId: raw.sourceId,
       isDemo: raw.isDemo, status, consultedAt: raw.consultedAt,
       nameKey: normalizeName(raw.name), domainKey: normalizeDomain(raw.website),
@@ -71,7 +74,7 @@ export async function ingestProspects(db: Db, orgId: string, raws: RawProspect[]
       const [existing] = raw.sourceId
         ? await db.select().from(prospects).where(and(eq(prospects.orgId, orgId), eq(prospects.sourceName, raw.sourceName), eq(prospects.sourceId, raw.sourceId))).limit(1)
         : [];
-      if (existing) outcomes.push({ prospectId: existing.id, name: existing.name, ...shown(raw), status: "already_stored", message: "Ya estaba guardado de una búsqueda anterior; no se duplicó." });
+      if (existing) outcomes.push({ prospectId: existing.id, name: existing.name, ...shown(raw), status: "already_stored", foreign: foreignTo(existing.ownerId), message: foreignTo(existing.ownerId) ? "Ya existe en la plataforma y está asignado a otra persona; no se duplicó." : "Ya estaba guardado de una búsqueda anterior; no se duplicó." });
       continue;
     }
 
@@ -88,7 +91,7 @@ export async function ingestProspects(db: Db, orgId: string, raws: RawProspect[]
     // Los siguientes elementos del mismo lote también se comparan contra este.
     refs.push({
       refType: "prospect", id: row.id, origin: "prospect", name: raw.name, website: raw.website,
-      phone: raw.phone, email: raw.email, address: raw.address, city: raw.city, sourceId: raw.sourceId, nit: raw.nit,
+      phone: raw.phone, email: raw.email, address: raw.address, city: raw.city, sourceId: raw.sourceId, nit: raw.nit, ownerId: owner?.id ?? null,
     });
 
     if (top) {
@@ -104,9 +107,11 @@ export async function ingestProspects(db: Db, orgId: string, raws: RawProspect[]
     const matchRef = top ? refs.find((r) => r.id === top.reference.id)! : undefined;
     outcomes.push({
       prospectId: row.id, name: raw.name, ...shown(raw), status,
-      message: top ? duplicateMessage(top.level, matchRef!.refType) : undefined,
-      matchedWith: matchRef ? { type: matchRef.refType, id: matchRef.id, name: matchRef.name, address: matchRef.address, phone: matchRef.phone, website: matchRef.website } : undefined,
-      reasons: top?.reasons,
+      foreign: matchRef?.refType === "prospect" ? foreignTo(matchRef.ownerId) : undefined,
+      message: top ? (matchRef?.refType === "prospect" && foreignTo(matchRef.ownerId) ? "Ya existe en la plataforma y está asignado a otra persona: no lo contactes para no duplicar el trabajo." : duplicateMessage(top.level, matchRef!.refType)) : undefined,
+      // Si lo que coincide es de otra persona, quien busca solo ve el nombre: ni su ficha, ni su teléfono, ni su dirección.
+      matchedWith: matchRef ? (matchRef.refType === "prospect" && foreignTo(matchRef.ownerId) ? { type: matchRef.refType, id: "", name: matchRef.name } : { type: matchRef.refType, id: matchRef.id, name: matchRef.name, address: matchRef.address, phone: matchRef.phone, website: matchRef.website }) : undefined,
+      reasons: matchRef?.refType === "prospect" && foreignTo(matchRef.ownerId) ? undefined : top?.reasons,
     });
   }
   await db.insert(auditLog).values({ orgId, actor: "system", action: "prospects.ingest", entity: searchId, detail: { received: raws.length, stored: outcomes.length } });

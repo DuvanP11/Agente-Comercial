@@ -72,6 +72,8 @@ export const prospects = pgTable("prospects", {
   doNotContact: boolean("do_not_contact").notNull().default(false),
   doNotContactReason: text("do_not_contact_reason"),
   doNotContactAt: timestamp("do_not_contact_at", { withTimezone: true }),
+  /** Persona que lo encontró, importó o capturó. El Hunter solo ve y trabaja los suyos; null = sin asignar (solo lo ven los demás roles). */
+  ownerId: text("owner_id"),
   /** Gestión de contacto: pending | contacted | no_answer | interested | not_interested. («Sin datos» y «agotado» se derivan, no se guardan.) */
   contactOutcome: text("contact_outcome").notNull().default("pending"),
   /** Veces que el equipo intentó contactarlo (cada WhatsApp abierto o intento registrado). */
@@ -83,6 +85,7 @@ export const prospects = pgTable("prospects", {
 }, (t) => [
   index("prospects_org_idx").on(t.orgId),
   uniqueIndex("prospects_source_uq").on(t.orgId, t.sourceName, t.sourceId),
+  index("prospects_owner_idx").on(t.ownerId),
 ]);
 
 export const evidence = pgTable("evidence", {
@@ -207,6 +210,8 @@ export const campaigns = pgTable("campaigns", {
   /** Imagen de portada de la campaña (PNG/JPEG/WebP, ya reducida) en base64. */
   coverData: text("cover_data"),
   coverMime: text("cover_mime"),
+  /** Quien creó la campaña: el Hunter solo ve las suyas. */
+  ownerId: text("owner_id"),
   createdAt: ts("created_at"),
 });
 
@@ -310,3 +315,21 @@ export const users = pgTable("users", {
   createdBy: text("created_by"),
   createdAt: ts("created_at"),
 }, (t) => [uniqueIndex("users_email_uq").on(t.emailKey), uniqueIndex("users_username_uq").on(t.usernameKey)]);
+
+/** Registro de actividad de las personas en la plataforma (qué vieron, descargaron, importaron e hicieron). */
+export const activityLog = pgTable("activity_log", {
+  id: id(),
+  orgId: text("org_id").notNull().references(() => organizations.id),
+  userId: text("user_id"),
+  userName: text("user_name"),
+  userEmail: text("user_email"),
+  role: text("role"),
+  /** view | click | download | import | search | action | login | logout | login_failed | admin | probe */
+  kind: text("kind").notNull(),
+  path: text("path"),
+  label: text("label").notNull(),
+  detail: jsonb("detail"),
+  ip: text("ip"),
+  userAgent: text("user_agent"),
+  createdAt: ts("created_at"),
+}, (t) => [index("activity_log_at_idx").on(t.createdAt), index("activity_log_user_idx").on(t.userId), index("activity_log_kind_idx").on(t.kind)]);

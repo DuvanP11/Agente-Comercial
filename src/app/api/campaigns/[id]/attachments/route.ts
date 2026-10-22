@@ -1,6 +1,8 @@
 import { NextResponse } from "next/server";
+import { campaignAccessible } from "@/lib/guard";
 import { ensureDefaultOrg, getDb } from "@/lib/db/client";
 import { sameOrigin } from "@/lib/rate-limit";
+import { track } from "@/lib/track";
 import { addAttachment } from "@/lib/services/campaign-media";
 
 export const dynamic = "force-dynamic";
@@ -10,11 +12,13 @@ export async function POST(req: Request, { params }: { params: Promise<{ id: str
   if (!sameOrigin(req.headers)) return NextResponse.json({ error: "Petición no permitida." }, { status: 403 });
   try {
     const { id } = await params;
+    if (!(await campaignAccessible(id))) return NextResponse.json({ error: "Campaña no encontrada." }, { status: 404 });
     const form = await req.formData();
     const f = form.get("file");
     if (!(f instanceof File)) return NextResponse.json({ error: "Falta el archivo." }, { status: 400 });
     const db = await getDb();
     const a = await addAttachment(db, await ensureDefaultOrg(db), id, f.name, new Uint8Array(await f.arrayBuffer()), "usuario");
+    await track("import", `Subió el archivo «${a.name}» a una campaña`, { campana: id, tipo: a.kind, bytes: a.size });
     return NextResponse.json({ ok: true, attachment: a });
   } catch (e) {
     return NextResponse.json({ error: e instanceof Error ? e.message : "No se pudo subir el archivo." }, { status: 400 });

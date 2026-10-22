@@ -5,6 +5,8 @@ import { getDb } from "@/lib/db/client";
 import { prospects } from "@/lib/db/schema";
 import { evidenceFor, type StoredScore } from "@/lib/services/analysis";
 import { CRITERION_LABELS } from "@/lib/scoring/score";
+import { seesAllData } from "@/lib/permissions";
+import { requireUser } from "@/lib/session";
 import { aiReady } from "@/lib/ai/ready";
 import { latestQualification } from "@/lib/services/agents";
 import { ensureDefaultOrg } from "@/lib/db/client";
@@ -16,8 +18,9 @@ export const dynamic = "force-dynamic";
 export default async function Analisis({ params }: { params: Promise<{ id: string }> }) {
   const { id } = await params;
   const db = await getDb();
+  const me = await requireUser();
   const [p] = await db.select().from(prospects).where(eq(prospects.id, id));
-  if (!p) notFound();
+  if (!p || (!seesAllData(me.role) && p.ownerId !== me.id)) notFound(); // el Hunter solo analiza lo suyo
   const ev = await evidenceFor(db, id);
   const s = p.scoreJson as StoredScore | null;
   const orgId = await ensureDefaultOrg(db);

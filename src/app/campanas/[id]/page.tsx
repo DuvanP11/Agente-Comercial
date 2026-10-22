@@ -1,4 +1,6 @@
 import Link from "next/link";
+import { requireUser } from "@/lib/session";
+import { viewerOf } from "@/lib/services/scope";
 import { notFound } from "next/navigation";
 import { ensureDefaultOrg, getDb } from "@/lib/db/client";
 import { CP_STATUSES, CP_STATUS_KEYS } from "@/lib/campaigns";
@@ -22,17 +24,18 @@ const bogotaDate = (d: Date | null) => (d ? new Date(d.getTime() - 5 * 3600_000)
 
 export default async function CampaignPage({ params }: { params: Promise<{ id: string }> }) {
   const { id } = await params;
+  const viewer = viewerOf(await requireUser());
   const db = await getDb();
   const org = await ensureDefaultOrg(db);
   let detail;
-  try { detail = await campaignDetail(db, org, id); } catch { notFound(); }
+  try { detail = await campaignDetail(db, org, id, viewer); } catch { notFound(); }
   const { campaign: c, items, funnel } = detail;
   const closed = c.status === "closed";
   const ai = aiReady();
   const attachments = await listAttachments(db, org, id);
   const n = campaignNumbers(funnel);
   const coverLen = c.coverData ? c.coverData.length : 0;
-  const options = closed ? [] : (await eligibleProspects(db, org, id)).map((p) => ({ id: p.id, name: p.name, city: p.city, category: p.category, hasPhone: !!normalizePhone(p.phone) }));
+  const options = closed ? [] : (await eligibleProspects(db, org, id, viewer)).map((p) => ({ id: p.id, name: p.name, city: p.city, category: p.category, hasPhone: !!normalizePhone(p.phone) }));
 
   return (
     <div className="space-y-5">

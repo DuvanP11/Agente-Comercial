@@ -1,7 +1,10 @@
 import Link from "next/link";
 import { desc, eq, ne, and } from "drizzle-orm";
 import { ensureDefaultOrg, getDb } from "@/lib/db/client";
-import { prospects } from "@/lib/db/schema";
+import { prospects, users } from "@/lib/db/schema";
+import { requireUser } from "@/lib/session";
+import { prospectVisible, viewerOf } from "@/lib/services/scope";
+import { Icon } from "@/components/icons";
 import { ChartCard, Columns, Donut, SERIES } from "@/components/charts";
 import { HelpPanel, Insight } from "@/components/Insight";
 import { priorityHistogram, PRIORITY_BANDS } from "@/lib/dashboard";
@@ -16,6 +19,16 @@ const STATUS: Record<string, string> = { new: "Nuevo", needs_review: "Revisar du
 const FILTERS = { todos: "Todos", sin: "Sin valorar", prioridad: "Con prioridad", insuf: "Sin prioridad (falta información)" } as const;
 type Filter = keyof typeof FILTERS;
 
+/** Qué datos de contacto tiene el prospecto, de un vistazo (solo cuentan los válidos). */
+function ContactChips({ phone, email, web }: { phone: boolean; email: boolean; web: boolean }) {
+  if (!phone && !email && !web) return <span className="badge badge-warn" title="No tiene teléfono, correo ni web válidos: complétalos en su ficha">Sin contacto</span>;
+  const chip = (on: boolean, icon: string, label: string) => (
+    <span className="inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-xs" title={on ? `Tiene ${label}` : `Sin ${label}`}
+      style={on ? { background: "color-mix(in srgb, var(--s3) 18%, transparent)", color: "var(--color-text)" } : { opacity: 0.4, textDecoration: "line-through" }}><Icon name={icon} size={12} />{label}</span>
+  );
+  return <div className="flex flex-wrap gap-1">{chip(phone, "phone", "teléfono")}{chip(email, "mail", "correo")}{chip(web, "globe", "web")}</div>;
+}
+
 function PriorityBadge({ s }: { s: StoredScore | null }) {
   if (!s) return <span className="badge">Sin valorar</span>;
   if (s.priority === null) return <span className="badge badge-warn" title="Falta información para calcular una prioridad: no significa que sea un mal prospecto.">Falta información</span>;
@@ -28,20 +41,32 @@ function PriorityBadge({ s }: { s: StoredScore | null }) {
   );
 }
 
-export default async function Analizar({ searchParams }: { searchParams: Promise<{ f?: string }> }) {
-  const { f } = await searchParams;
+export default async function Analizar({ searchParams }: { searchParams: Promise<{ f?: string; c?: string; r?: string }> }) {
+  const { f, c, r } = await searchParams;
+  const me = await requireUser();
+  const viewer = viewerOf(me);
+  const contact: "todos" | "con" | "sin" = c === "con" || c === "sin" ? c : "todos";
   const filter: Filter = f && f in FILTERS ? (f as Filter) : "todos";
   const db = await getDb();
   const org = await ensureDefaultOrg(db);
   const cfg = await getScoringConfig(db, org);
-  const all = await db.select().from(prospects).where(and(eq(prospects.orgId, org), ne(prospects.status, "excluded_duplicate"))).orderBy(desc(prospects.createdAt)).limit(300);
+  const people = viewer.seesAll ? await db.select({ id: users.id, name: users.name }).from(users).where(eq(users.active, true)).orderBy(users.name) : [];
+  const nameOf = new Map(people.map((x) => [x.id, x.name]));
+  const owner = viewer.seesAll ? (r === "mios" ? me.id : r === "sin" ? "sin" : r && nameOf.has(r) ? r : undefined) : undefined;
+  // El Hunter analiza solo lo suyo; los demás roles ven todo y pueden filtrar por responsable.
+  const all = (await db.select().from(prospects).where(and(eq(prospects.orgId, org), ne(prospects.status, "excluded_duplicate"), prospectVisible(viewer))).orderBy(desc(prospects.createdAt)).limit(300))
+    .filter((p) => !owner || (owner === "sin" ? !p.ownerId : p.ownerId === owner));
   const withScore = all.map((p) => ({ p, s: p.scoreJson as StoredScore | null }));
   const unrated = withScore.filter((x) => !x.s), noPriority = withScore.filter((x) => x.s && x.s.priority === null), ranked = withScore.filter((x) => x.s && x.s.priority !== null);
   const hist = priorityHistogram(withScore.map((x) => (x.s ? x.s.priority : null)).filter((_, i) => withScore[i].s));
-  const rows = (filter === "sin" ? unrated : filter === "prioridad" ? ranked : filter === "insuf" ? noPriority : withScore)
+  const hasContact = (p: (typeof all)[number]) => !!(p.phoneKey || p.emailKey || p.domainKey); // datos válidos: un teléfono mal escrito no cuenta
+  const base = filter === "sin" ? unrated : filter === "prioridad" ? ranked : filter === "insuf" ? noPriority : withScore;
+  const withC = base.filter((x) => hasContact(x.p)).length;
+  const rows = (contact === "con" ? base.filter((x) => hasContact(x.p)) : contact === "sin" ? base.filter((x) => !hasContact(x.p)) : base)
     .slice().sort((a, b) => (b.s?.priority ?? -1) - (a.s?.priority ?? -1));
   const count: Record<Filter, number> = { todos: withScore.length, sin: unrated.length, prioridad: ranked.length, insuf: noPriority.length };
   const avgCov = withScore.filter((x) => x.s).length ? Math.round((withScore.reduce((a, x) => a + (x.s?.coverage ?? 0), 0) / withScore.filter((x) => x.s).length) * 100) : null;
+  const link = (ff: string | undefined, cc: string, rr: string | undefined = r) => { const q = new URLSearchParams(); if (ff) q.set("f", ff); if (cc !== "todos") q.set("c", cc); if (rr) q.set("r", rr); const t = q.toString(); return t ? `/analizar?${t}` : "/analizar"; };
   const pill = (active: boolean) => (active ? { background: "var(--color-primary)", color: "var(--color-on-primary)" } : undefined);
   const keys = Object.keys(DEFAULT_WEIGHTS) as CriterionKey[];
   const kpi = (label: string, value: string | number, note: string, color: string) => (
@@ -94,20 +119,37 @@ export default async function Analizar({ searchParams }: { searchParams: Promise
 
       <nav aria-label="Filtrar" className="flex flex-wrap items-center gap-2">
         <span className="text-sm text-muted">Ver:</span>
-        {(Object.keys(FILTERS) as Filter[]).map((k) => <Link key={k} className="btn" style={pill(filter === k)} href={k === "todos" ? "/analizar" : `/analizar?f=${k}`}>{FILTERS[k]} ({count[k]})</Link>)}
+        {(Object.keys(FILTERS) as Filter[]).map((k) => <Link key={k} className="btn" style={pill(filter === k)} href={link(k === "todos" ? undefined : k, contact)}>{FILTERS[k]} ({count[k]})</Link>)}
+      </nav>
+      {viewer.seesAll && (
+        <nav aria-label="Filtrar por responsable" className="flex flex-wrap items-center gap-2">
+          <span className="text-sm text-muted">Responsable:</span>
+          <Link className="btn" style={pill(!owner)} href={link(filter === "todos" ? undefined : filter, contact, "")}>Todos</Link>
+          <Link className="btn" style={pill(owner === me.id)} href={link(filter === "todos" ? undefined : filter, contact, "mios")}>Míos</Link>
+          <Link className="btn" style={pill(owner === "sin")} href={link(filter === "todos" ? undefined : filter, contact, "sin")}>Sin asignar</Link>
+          <form method="get" className="flex items-center gap-2">
+            {filter !== "todos" && <input type="hidden" name="f" value={filter} />}{contact !== "todos" && <input type="hidden" name="c" value={contact} />}
+            <select name="r" aria-label="Elegir persona" className="input !w-auto" defaultValue={owner && owner !== "sin" && owner !== me.id ? owner : ""}><option value="">Otra persona…</option>{people.filter((x) => x.id !== me.id).map((x) => <option key={x.id} value={x.id}>{x.name}</option>)}</select><button className="btn">Ver</button>
+          </form>
+        </nav>)}
+      <nav aria-label="Filtrar por contacto" className="flex flex-wrap items-center gap-2">
+        <span className="text-sm text-muted">Contacto:</span>
+        {([["todos", "Todos", base.length], ["con", "Con contacto", withC], ["sin", "Sin contacto", base.length - withC]] as const).map(([k, l, n]) => <Link key={k} className="btn" style={pill(contact === k)} href={link(filter === "todos" ? undefined : filter, k)}>{l} ({n})</Link>)}
       </nav>
 
       <div className="card overflow-x-auto">
         {rows.length === 0 ? <p className="text-sm text-muted">{all.length === 0 ? "No hay prospectos por analizar. Ejecuta una búsqueda primero." : "No hay prospectos con este filtro."}</p> : (
           <table className="table">
-            <thead><tr><th>Empresa</th><th>Rubro</th><th>Estado</th><th>Prioridad</th><th>Cobertura</th><th></th></tr></thead>
+            <thead><tr><th>Empresa</th><th>Rubro</th><th>Contacto</th><th>Estado</th><th>Prioridad</th><th>Cobertura</th>{viewer.seesAll && <th>Responsable</th>}<th></th></tr></thead>
             <tbody>{rows.map(({ p, s }) => (
               <tr key={p.id}>
                 <td><Link className="font-semibold underline" href={`/prospectos/${p.id}`}>{p.name}</Link>{p.isDemo && <span className="badge badge-warn ml-2">Demo</span>}<div className="text-xs text-muted">{p.city}</div></td>
                 <td>{p.category ?? <span className="text-muted">—</span>}</td>
+                <td><ContactChips phone={!!p.phoneKey} email={!!p.emailKey} web={!!p.domainKey} /></td>
                 <td><span className="badge">{STATUS[p.status] ?? p.status}</span></td>
                 <td><PriorityBadge s={s} /></td>
                 <td>{s ? <span className="inline-flex items-center gap-2"><span className="inline-block h-2 w-16 overflow-hidden rounded-full" style={{ background: "var(--color-surface-2)" }}><span className="block h-2 rounded-full" style={{ width: `${Math.round(s.coverage * 100)}%`, background: "var(--s1)" }} /></span>{Math.round(s.coverage * 100)} %</span> : <span className="text-muted">—</span>}</td>
+                {viewer.seesAll && <td className="text-sm">{p.ownerId ? nameOf.get(p.ownerId) ?? "—" : <span className="badge badge-warn">Sin asignar</span>}</td>}
                 <td><Link className="btn" href={`/analizar/${p.id}`}>{s ? "Revisar" : "Analizar"}</Link></td>
               </tr>
             ))}</tbody>

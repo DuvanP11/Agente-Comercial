@@ -1,4 +1,5 @@
 "use server";
+import { track } from "@/lib/track";
 import { ensureDefaultOrg, getDb } from "@/lib/db/client";
 import { commitImport, previewImport, suggestMapping, type ColumnMapping, type PreviewRow } from "@/lib/services/clients";
 import { parseTable } from "@/lib/services/tabular";
@@ -34,6 +35,7 @@ export async function commitAction(_: ImportState, formData: FormData): Promise<
     const preview = previewImport(table.rows, mapping);
     const db = await getDb();
     const res = await commitImport(db, await ensureDefaultOrg(db), preview, "usuario");
+    await track("import", "Importó clientes existentes desde un archivo", { importados: res.imported, omitidos: res.skipped.length });
     return { step: "done", imported: res.imported, skipped: res.skipped };
   } catch (e) {
     return { step: "error", error: e instanceof Error ? e.message : "Error guardando la importación." };

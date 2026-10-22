@@ -1,4 +1,6 @@
 import { ensureDefaultOrg, getDb } from "@/lib/db/client";
+import { requireUser } from "@/lib/session";
+import { viewerOf } from "@/lib/services/scope";
 import { byCategory, byCity, bySector, bySource, quality, rate, searchHealth, sinceDate, SMALL_SAMPLE, type GroupStats } from "@/lib/market";
 import { ChartCard, Donut, Funnel, HBars, SERIES } from "@/components/charts";
 import { Insight } from "@/components/Insight";
@@ -34,8 +36,9 @@ function Table({ title, rows, note }: { title: string; rows: GroupStats[]; note?
 
 export default async function Mercado({ searchParams }: { searchParams: Promise<{ dias?: string; demo?: string }> }) {
   const { dias, demo } = await searchParams;
+  const viewer = viewerOf(await requireUser());
   const db = await getDb();
-  const { rows, searches: sRows, demoCount, excludedDuplicates } = await loadMarket(db, await ensureDefaultOrg(db), { since: sinceDate(dias), includeDemo: demo === "1" });
+  const { rows, searches: sRows, demoCount, excludedDuplicates } = await loadMarket(db, await ensureDefaultOrg(db), { since: sinceDate(dias), includeDemo: demo === "1", viewer });
   const q = quality(rows);
   const health = searchHealth(sRows);
   const sectors = bySector(rows), cities = byCity(rows), sources = bySource(rows);

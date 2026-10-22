@@ -1,4 +1,6 @@
 import Link from "next/link";
+import { requireUser } from "@/lib/session";
+import { viewerOf } from "@/lib/services/scope";
 import { ensureDefaultOrg, getDb } from "@/lib/db/client";
 import { CP_STATUSES, type CpStatus } from "@/lib/campaigns";
 import { campaignFunnel, campaignNumbers, campaignsOverview, campaignInsight } from "@/lib/campaign-stats";
@@ -13,9 +15,10 @@ const fmt = (d: Date) => d.toLocaleDateString("es-CO", { timeZone: "America/Bogo
 const FU: Record<string, [string, string]> = { overdue: ["Vencido", "badge-bad"], today: ["Hoy", "badge-warn"], upcoming: ["Próximo", ""] };
 
 export default async function Campanas() {
+  const viewer = viewerOf(await requireUser());
   const db = await getDb();
   const org = await ensureDefaultOrg(db);
-  const [camps, fus] = await Promise.all([listCampaigns(db, org), followUps(db, org)]);
+  const [camps, fus] = await Promise.all([listCampaigns(db, org, viewer), followUps(db, org, viewer)]);
   const nums = camps.map((c) => campaignNumbers(c.funnel));
   const all = nums.reduce((a, n) => ({ total: a.total + n.total, contacted: a.contacted + n.contacted, replied: a.replied + n.replied, won: a.won + n.won }), { total: 0, contacted: 0, replied: 0, won: 0 });
   const merged = Object.fromEntries((Object.keys(CP_STATUSES) as CpStatus[]).map((k) => [k, camps.reduce((s, c) => s + c.funnel[k], 0)])) as Record<CpStatus, number>;

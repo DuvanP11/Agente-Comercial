@@ -7,6 +7,7 @@ import { authConfigured } from "@/lib/auth";
 import { ensureDefaultOrg, getDb } from "@/lib/db/client";
 import { authenticate } from "@/lib/services/users";
 import { startSession } from "@/lib/session";
+import { logActivity } from "@/lib/services/activity";
 
 async function login(formData: FormData) {
   "use server";
@@ -14,7 +15,13 @@ async function login(formData: FormData) {
   if (tooMany(`login:${clientIp(await headers())}`, 20, 15 * 60_000)) redirect("/login?error=locked");
   const db = await getDb();
   const r = await authenticate(db, await ensureDefaultOrg(db), String(formData.get("identifier") ?? ""), String(formData.get("password") ?? ""));
-  if (!r.ok) redirect(`/login?error=${r.reason === "locked" ? "locked" : "1"}`);
+  const h = await headers(), org = await ensureDefaultOrg(db);
+  const ident = String(formData.get("identifier") ?? "").slice(0, 80);
+  if (!r.ok) {
+    await logActivity(db, org, { kind: "login_failed", label: `Intento de acceso fallido (${r.reason === "locked" ? "cuenta bloqueada" : "datos incorrectos"})`, detail: { identificador: ident }, ip: clientIp(h), userAgent: h.get("user-agent") });
+    redirect(`/login?error=${r.reason === "locked" ? "locked" : "1"}`);
+  }
+  await logActivity(db, org, { kind: "login", label: "Inició sesión", user: { id: r.user.id, name: r.user.name, email: r.user.email, role: r.user.role }, ip: clientIp(h), userAgent: h.get("user-agent") });
   await startSession(r.user);
   redirect(r.user.mustChangePassword ? "/cuenta?cambio=obligatorio" : "/bienvenida");
 }

@@ -23,5 +23,6 @@ export const NAV: NavItem[] = [
   { slug: "reportes", label: "Reportes", href: "/reportes", status: "partial", phase: "9", note: "Descarga CSV de prospectos. Falta: reportes gerenciales en Excel o PDF por campaña y mercado.", group: "Sistema", icon: "file" },
   { slug: "configuracion", label: "Configuración", href: "/configuracion", status: "partial", phase: "2", note: "Pesos del puntaje, cobertura mínima y reglas de contacto. Falta: usuarios y roles (hoy hay una sola contraseña compartida).", group: "Sistema", icon: "settings" },
   { slug: "apariencia", label: "Apariencia y marca", href: "/apariencia", status: "ready", phase: "2", group: "Sistema", icon: "palette" },
+  { slug: "auditoria", label: "Auditoría", href: "/auditoria", status: "ready", phase: "2", group: "Sistema", icon: "eye", note: "Quién hizo qué: accesos, pantallas, descargas, importaciones y acciones (Admin, Head, IT y Gerencia)." },
   { slug: "usuarios", label: "Usuarios", href: "/usuarios", status: "ready", phase: "2", group: "Sistema", icon: "users", note: "Crear, editar y desactivar usuarios, cambiar roles y restablecer contraseñas (Admin, Gerencia y Head; IT solo lee)." },
 ];

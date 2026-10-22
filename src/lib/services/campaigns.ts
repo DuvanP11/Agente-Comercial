@@ -7,6 +7,7 @@ import {
   type CpStatus,
 } from "../campaigns";
 import type { Db } from "../db/client";
+import { assertCampaignAccess, campaignVisible, prospectVisible, type Viewer } from "./scope";
 import { assertCanContact, registerAttempt, syncOutcomeFromCampaign } from "./contact-tracking";
 import { activities, auditLog, campaignProspects, campaigns, messages, prospects } from "../db/schema";
 
@@ -17,12 +18,12 @@ const campaignInput = z.object({
   template: z.string().trim().min(10, "La plantilla del mensaje es muy corta.").max(1500),
 });
 
-export async function createCampaign(db: Db, orgId: string, raw: unknown, actor: string) {
+export async function createCampaign(db: Db, orgId: string, raw: unknown, actor: string, ownerId?: string) {
   const parsed = campaignInput.safeParse(raw);
   if (!parsed.success) throw new Error(parsed.error.issues[0].message);
   const v = parsed.data;
   const [c] = await db.insert(campaigns).values({
-    orgId, name: v.name, objective: v.objective || null, valueProposition: v.valueProposition || null, template: v.template,
+    orgId, name: v.name, objective: v.objective || null, valueProposition: v.valueProposition || null, template: v.template, ownerId: ownerId ?? null,
   }).returning();
   await db.insert(auditLog).values({ orgId, actor, action: "campaign.create", entity: c.id });
   return c;
@@ -47,8 +48,8 @@ export async function updateCampaign(db: Db, orgId: string, id: string, raw: unk
   await db.insert(auditLog).values({ orgId, actor, action: "campaign.update", entity: id });
 }
 
-export async function listCampaigns(db: Db, orgId: string) {
-  const rows = await db.select({ ...LIST_COLS, coverLen: sql<number>`coalesce(length(${campaigns.coverData}), 0)::int` }).from(campaigns).where(eq(campaigns.orgId, orgId)).orderBy(desc(campaigns.createdAt));
+export async function listCampaigns(db: Db, orgId: string, viewer?: Viewer) {
+  const rows = await db.select({ ...LIST_COLS, coverLen: sql<number>`coalesce(length(${campaigns.coverData}), 0)::int` }).from(campaigns).where(and(eq(campaigns.orgId, orgId), campaignVisible(viewer))).orderBy(desc(campaigns.createdAt));
   const cps = rows.length
     ? await db.select({ campaignId: campaignProspects.campaignId, status: campaignProspects.status }).from(campaignProspects).where(eq(campaignProspects.orgId, orgId))
     : [];
@@ -62,19 +63,20 @@ async function loadCampaign(db: Db, orgId: string, id: string) {
 }
 
 /** Prospectos que se pueden sumar: sin duplicado pendiente, no archivados, sin "no contactar" y que no estén ya en la campaña. */
-export async function eligibleProspects(db: Db, orgId: string, campaignId: string) {
+export async function eligibleProspects(db: Db, orgId: string, campaignId: string, viewer?: Viewer) {
   const inCampaign = (await db.select({ id: campaignProspects.prospectId }).from(campaignProspects).where(eq(campaignProspects.campaignId, campaignId))).map((r) => r.id);
   const rows = await db.select().from(prospects).where(and(
-    eq(prospects.orgId, orgId), eq(prospects.doNotContact, false),
+    eq(prospects.orgId, orgId), eq(prospects.doNotContact, false), prospectVisible(viewer),
     notInArray(prospects.status, ["excluded_duplicate", "needs_review", "archived"]),
   )).orderBy(desc(prospects.createdAt)).limit(500);
   return rows.filter((p) => !inCampaign.includes(p.id));
 }
 
-export async function addProspects(db: Db, orgId: string, campaignId: string, prospectIds: string[], actor: string) {
+export async function addProspects(db: Db, orgId: string, campaignId: string, prospectIds: string[], actor: string, viewer?: Viewer) {
+  if (viewer) await assertCampaignAccess(db, orgId, viewer, campaignId);
   const c = await loadCampaign(db, orgId, campaignId);
   if (c.status === "closed") throw new Error("La campaña está cerrada.");
-  const eligible = new Map((await eligibleProspects(db, orgId, campaignId)).map((p) => [p.id, p]));
+  const eligible = new Map((await eligibleProspects(db, orgId, campaignId, viewer)).map((p) => [p.id, p]));
   const added: string[] = [], skipped: { id: string; reason: string }[] = [];
   for (const pid of [...new Set(prospectIds)]) {
     if (eligible.has(pid)) added.push(pid);
@@ -85,7 +87,8 @@ export async function addProspects(db: Db, orgId: string, campaignId: string, pr
   return { added: added.length, skipped };
 }
 
-export async function campaignDetail(db: Db, orgId: string, campaignId: string) {
+export async function campaignDetail(db: Db, orgId: string, campaignId: string, viewer?: Viewer) {
+  if (viewer) await assertCampaignAccess(db, orgId, viewer, campaignId);
   const c = await loadCampaign(db, orgId, campaignId);
   const rows = await db.select({ cp: campaignProspects, p: prospects }).from(campaignProspects)
     .innerJoin(prospects, eq(prospects.id, campaignProspects.prospectId))
@@ -212,11 +215,11 @@ export async function openWhatsApp(db: Db, orgId: string, cpId: string, actor: s
 }
 
 /** Seguimientos pendientes de todas las campañas activas, vencidos primero. */
-export async function followUps(db: Db, orgId: string) {
+export async function followUps(db: Db, orgId: string, viewer?: Viewer) {
   const rows = await db.select({ cp: campaignProspects, p: prospects, c: campaigns }).from(campaignProspects)
     .innerJoin(prospects, eq(prospects.id, campaignProspects.prospectId))
     .innerJoin(campaigns, eq(campaigns.id, campaignProspects.campaignId))
-    .where(and(eq(campaignProspects.orgId, orgId), eq(campaigns.status, "active"), sql`${campaignProspects.nextFollowUpAt} is not null`));
+    .where(and(eq(campaignProspects.orgId, orgId), eq(campaigns.status, "active"), campaignVisible(viewer), sql`${campaignProspects.nextFollowUpAt} is not null`));
   const now = new Date();
   return rows
     .map((r) => ({ ...r, state: followUpState(r.cp.status as CpStatus, r.cp.nextFollowUpAt, now) }))

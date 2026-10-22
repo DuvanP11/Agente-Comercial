@@ -1,15 +1,22 @@
 import Papa from "papaparse";
-import { desc, eq } from "drizzle-orm";
+import { getCurrentUser } from "@/lib/session";
+import { prospectVisible, viewerOf } from "@/lib/services/scope";
+import { and, desc, eq } from "drizzle-orm";
 import { ensureDefaultOrg, getDb } from "@/lib/db/client";
 import { prospects } from "@/lib/db/schema";
+import { track } from "@/lib/track";
 import { sanitizeCell } from "@/lib/services/tabular";
 import type { StoredScore } from "@/lib/services/analysis";
 
 export const dynamic = "force-dynamic";
 
 export async function GET() {
+  const me = await getCurrentUser();
+  if (!me) return new Response("Sin sesión", { status: 401 });
   const db = await getDb();
-  const rows = await db.select().from(prospects).where(eq(prospects.orgId, await ensureDefaultOrg(db))).orderBy(desc(prospects.createdAt));
+  // El Hunter descarga solo sus prospectos; los demás roles, todos.
+  const rows = await db.select().from(prospects).where(and(eq(prospects.orgId, await ensureDefaultOrg(db)), prospectVisible(viewerOf(me)))).orderBy(desc(prospects.createdAt));
+  await track("download", "Descargó el reporte de prospectos (CSV)", { filas: rows.length });
   const csv = Papa.unparse({
     fields: ["Empresa", "Categoría", "Ciudad", "Dirección", "Teléfono", "Sitio web", "Fuente", "Consultado", "Estado", "Prioridad", "Cobertura %", "Demo"],
     data: rows.map((p) => {

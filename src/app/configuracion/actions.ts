@@ -1,4 +1,5 @@
 "use server";
+import { track } from "@/lib/track";
 import { requireNotHunter } from "@/lib/session";
 import { revalidatePath } from "next/cache";
 import { ensureDefaultOrg, getDb } from "@/lib/db/client";
@@ -12,6 +13,7 @@ export async function saveScoringAction(input: { weights: Record<string, number>
     const db = await getDb();
     const r = await saveScoringConfig(db, await ensureDefaultOrg(db), input, "usuario");
     revalidatePath("/configuracion"); revalidatePath("/analizar", "layout"); revalidatePath("/prospectos", "layout");
+    await track("admin", "Cambió los pesos del puntaje", { recalculados: r.recalculated }, "/configuracion");
     return { ok: `Guardado. ${r.recalculated === 0 ? "Aún no hay prospectos valorados." : `Se recalculó la prioridad de ${r.recalculated} prospecto(s) ya valorado(s); sus valoraciones no cambiaron.`}` };
   } catch (e) { return { error: e instanceof Error ? e.message : "No se pudo guardar." }; }
 }
@@ -32,6 +34,7 @@ export async function saveContactRulesAction(maxAttempts: number): Promise<Confi
     const db = await getDb();
     const r = await saveContactRules(db, await ensureDefaultOrg(db), { maxAttempts }, "usuario");
     revalidatePath("/configuracion"); revalidatePath("/prospectos", "layout");
+    await track("admin", "Cambió el máximo de intentos de contacto", { maximo: r.maxAttempts }, "/configuracion");
     return { ok: `Guardado: máximo ${r.maxAttempts} intento${r.maxAttempts === 1 ? "" : "s"} por prospecto. Se aplica desde ahora, también a los que ya estaban contactados.` };
   } catch (e) { return { error: e instanceof Error ? e.message : "No se pudo guardar." }; }
 }
