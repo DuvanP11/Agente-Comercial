@@ -27,3 +27,25 @@ export function removeFlatBackground(data: Uint8ClampedArray, w: number, h: numb
   }
   return n;
 }
+
+
+export interface LogoAnalysis { transparentShare: number; colors: number; tintable: boolean }
+
+/**
+ * ¿Sirve la imagen para pintarla con el color del tema? Solo si tiene transparencia (la silueta) y pocos colores:
+ * una imagen con fondo o con varios colores quedaría como un bloque liso. Cuenta colores «relevantes» (≥ 3 % de los píxeles visibles).
+ */
+export function analyzeLogo(data: Uint8ClampedArray, w: number, h: number): LogoAnalysis {
+  const total = w * h; let transparent = 0, visible = 0;
+  const buckets = new Map<number, number>();
+  for (let i = 0; i < total; i++) {
+    const a = data[i * 4 + 3];
+    if (a < 16) { transparent++; continue; }
+    visible++;
+    const key = ((data[i * 4] >> 5) << 6) | ((data[i * 4 + 1] >> 5) << 3) | (data[i * 4 + 2] >> 5); // 8 niveles por canal
+    buckets.set(key, (buckets.get(key) ?? 0) + 1);
+  }
+  const colors = [...buckets.values()].filter((n) => n >= visible * 0.03).length;
+  const transparentShare = total ? transparent / total : 0;
+  return { transparentShare, colors, tintable: transparentShare >= 0.05 && colors <= 2 };
+}

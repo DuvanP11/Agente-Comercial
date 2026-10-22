@@ -15,7 +15,7 @@ export default async function Apariencia() {
         <div><h1 className="text-2xl font-bold">Apariencia y marca</h1>
           <p className="text-sm text-muted">Cambia los colores, la forma y el logo. Todos los componentes leen estas variables: al cambiarlas se actualiza la aplicación completa, y el logo y el ícono de la pestaña cambian de color con el diseño.</p></div>
       </header>
-      <LogoManager hasLogo={brand.hasLogo} hasIcon={brand.hasIcon} tint={brand.tint} version={brand.version} />
+      <LogoManager hasLogo={brand.hasLogo} hasIcon={brand.hasIcon} tint={brand.tint} iconTint={brand.iconTint} version={brand.version} />
       <ThemeEditor initial={await getActiveTheme()} />
     </div>
   );

@@ -2,7 +2,7 @@ import { describe, expect, it } from "vitest";
 import { createPgliteDb, ensureDefaultOrg } from "@/lib/db/client";
 import { parseImageDataUrl, sniffMime, MAX_BRAND_BYTES } from "@/lib/brand";
 import { faviconSvg } from "@/lib/favicon";
-import { removeFlatBackground } from "@/lib/image-bg";
+import { analyzeLogo, removeFlatBackground } from "@/lib/image-bg";
 import { PRESETS } from "@/lib/theme/presets";
 import { checkContrast, DEFAULT_THEME, PROVISIONAL_THEME, resolveTheme, themeCss, themeTokens } from "@/lib/theme/tokens";
 import { getBrandAsset, getBrandInfo, removeBrandAsset, saveBrandAsset, setBrandTint } from "@/lib/services/brand";
@@ -56,9 +56,9 @@ describe("marca: logo e ícono", () => {
     expect((await getBrandAsset(d, o, "logo"))?.mime).toBe("image/png");
     expect(await getBrandAsset(d, o, "icon")).toBeNull();
     await new Promise((r) => setTimeout(r, 5));
-    await setBrandTint(d, o, false, "t");
+    await setBrandTint(d, o, "logo", false, "t");
     const i2 = await getBrandInfo(d, o);
-    expect(i2.tint).toBe(false); expect(i2.version).not.toBe(i1.version); expect(i2.hasLogo).toBe(true);
+    expect(i2.tint).toBe(false); expect(i2.iconTint).toBe(true); expect(i2.version).not.toBe(i1.version); expect(i2.hasLogo).toBe(true);
     await removeBrandAsset(d, o, "logo", "t");
     expect((await getBrandInfo(d, o)).hasLogo).toBe(false);
   });
@@ -85,5 +85,23 @@ describe("quitar fondo liso", () => {
     expect(removeFlatBackground(d, w, 10, 5)).toBeLessThan(w * 10);
     const t = new Uint8ClampedArray(10 * 10 * 4); // todo transparente
     expect(removeFlatBackground(t, 10, 10, 50)).toBe(0);
+  });
+});
+
+
+describe("¿sirve para pintarla con el color del tema?", () => {
+  const img = (w: number, h: number, f: (x: number, y: number) => [number, number, number, number]) => { const d = new Uint8ClampedArray(w * h * 4); for (let y = 0; y < h; y++) for (let x = 0; x < w; x++) d.set(f(x, y), (y * w + x) * 4); return d; };
+  it("silueta de un color sobre transparente: sí", () => {
+    const d = img(20, 20, (x, y) => (x > 4 && x < 15 && y > 4 && y < 15 ? [120, 37, 188, 255] : [0, 0, 0, 0]));
+    expect(analyzeLogo(d, 20, 20)).toMatchObject({ tintable: true, colors: 1 });
+  });
+  it("cuadro morado con dibujo blanco y sin transparencia (el caso del robot): no", () => {
+    const d = img(20, 20, (x, y) => (x > 6 && x < 13 && y > 6 && y < 13 ? [255, 255, 255, 255] : [88, 42, 160, 255]));
+    const a = analyzeLogo(d, 20, 20);
+    expect(a.tintable).toBe(false); expect(a.transparentShare).toBe(0);
+  });
+  it("varios colores aunque haya transparencia: no", () => {
+    const d = img(30, 30, (x) => (x < 5 ? [0, 0, 0, 0] : x < 12 ? [255, 0, 0, 255] : x < 20 ? [0, 255, 0, 255] : [0, 0, 255, 255]));
+    expect(analyzeLogo(d, 30, 30).tintable).toBe(false);
   });
 });

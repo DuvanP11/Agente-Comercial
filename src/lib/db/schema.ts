@@ -279,7 +279,9 @@ export const brandAssets = pgTable("brand_assets", {
   logoMime: text("logo_mime"),
   iconData: text("icon_data"),
   iconMime: text("icon_mime"),
-  /** true = el logo se pinta con el color principal del tema (solo sirve con fondo transparente). */
+  /** true = el logo se pinta con el color principal del tema (solo sirve con fondo transparente y un solo color). */
   tint: boolean("tint").notNull().default(true),
+  /** Lo mismo para el ícono de la pestaña. */
+  iconTint: boolean("icon_tint").notNull().default(true),
   updatedAt: ts("updated_at"),
 });

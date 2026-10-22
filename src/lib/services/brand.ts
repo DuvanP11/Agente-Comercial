@@ -3,12 +3,12 @@ import type { Db } from "../db/client";
 import { auditLog, brandAssets } from "../db/schema";
 import { parseImageDataUrl, type BrandKind, type BrandMime } from "../brand";
 
-export interface BrandInfo { hasLogo: boolean; hasIcon: boolean; tint: boolean; version: string }
+export interface BrandInfo { hasLogo: boolean; hasIcon: boolean; tint: boolean; iconTint: boolean; version: string }
 
 /** Solo metadatos (no trae las imágenes): para saber qué mostrar y para invalidar cachés cuando cambian. */
 export async function getBrandInfo(db: Db, orgId: string): Promise<BrandInfo> {
-  const [r] = await db.select({ logo: brandAssets.logoMime, icon: brandAssets.iconMime, tint: brandAssets.tint, at: brandAssets.updatedAt }).from(brandAssets).where(eq(brandAssets.orgId, orgId));
-  return { hasLogo: !!r?.logo, hasIcon: !!r?.icon, tint: r?.tint ?? true, version: r ? String(r.at.getTime()) : "0" };
+  const [r] = await db.select({ logo: brandAssets.logoMime, icon: brandAssets.iconMime, tint: brandAssets.tint, iconTint: brandAssets.iconTint, at: brandAssets.updatedAt }).from(brandAssets).where(eq(brandAssets.orgId, orgId));
+  return { hasLogo: !!r?.logo, hasIcon: !!r?.icon, tint: r?.tint ?? true, iconTint: r?.iconTint ?? true, version: r ? String(r.at.getTime()) : "0" };
 }
 
 export async function getBrandAsset(db: Db, orgId: string, kind: BrandKind): Promise<{ mime: BrandMime; base64: string } | null> {
@@ -32,8 +32,9 @@ export async function removeBrandAsset(db: Db, orgId: string, kind: BrandKind, a
   await db.insert(auditLog).values({ orgId, actor, action: `brand.${kind}.remove`, entity: orgId });
 }
 
-export async function setBrandTint(db: Db, orgId: string, tint: boolean, actor: string) {
+export async function setBrandTint(db: Db, orgId: string, kind: BrandKind, tint: boolean, actor: string) {
   const now = new Date();
-  await db.insert(brandAssets).values({ orgId, tint, updatedAt: now }).onConflictDoUpdate({ target: brandAssets.orgId, set: { tint, updatedAt: now } });
-  await db.insert(auditLog).values({ orgId, actor, action: "brand.tint", entity: orgId, detail: { tint } });
+  const set = kind === "logo" ? { tint } : { iconTint: tint };
+  await db.insert(brandAssets).values({ orgId, ...set, updatedAt: now }).onConflictDoUpdate({ target: brandAssets.orgId, set: { ...set, updatedAt: now } });
+  await db.insert(auditLog).values({ orgId, actor, action: "brand.tint", entity: orgId, detail: { kind, tint } });
 }

@@ -13,7 +13,7 @@ export async function GET() {
   try {
     const db = await getDb(), org = await ensureDefaultOrg(db);
     const [info, icon] = await Promise.all([getBrandInfo(db, org), getBrandAsset(db, org, "icon")]);
-    tint = info.tint;
+    tint = info.iconTint;
     if (icon) { base64 = icon.base64; mime = icon.mime; }
   } catch { /* se queda el ícono por defecto */ }
   const { light, dark } = resolveTheme(await getActiveTheme());

@@ -1,0 +1,1 @@
+ALTER TABLE "brand_assets" ADD COLUMN "icon_tint" boolean DEFAULT true NOT NULL;

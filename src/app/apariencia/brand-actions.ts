@@ -26,11 +26,12 @@ export async function removeBrandAction(kind: string): Promise<BrandState> {
   } catch (e) { return { error: e instanceof Error ? e.message : "No se pudo quitar." }; }
 }
 
-export async function setTintAction(tint: boolean): Promise<BrandState> {
+export async function setTintAction(kind: string, tint: boolean): Promise<BrandState> {
   try {
+    if (!isKind(kind)) return { error: "Tipo de imagen no válido." };
     const db = await getDb();
-    await setBrandTint(db, await ensureDefaultOrg(db), tint, "usuario");
+    await setBrandTint(db, await ensureDefaultOrg(db), kind, tint, "usuario");
     revalidatePath("/", "layout");
-    return { ok: tint ? "El logo ahora usa el color principal del tema." : "El logo se muestra con sus colores originales." };
+    return { ok: tint ? "Ahora usa el color principal del tema." : "Se muestra con sus colores originales." };
   } catch (e) { return { error: e instanceof Error ? e.message : "No se pudo guardar." }; }
 }
