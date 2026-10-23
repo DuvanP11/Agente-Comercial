@@ -119,3 +119,30 @@ export async function saveHiddenModules(db: Db, orgId: string, actor: string, hi
   await db.insert(auditLog).values({ orgId, actor, action: "modules.visibility", entity: orgId, detail: { hidden: list } });
   return list;
 }
+
+// ---------------------------------------------------------------------------------------------
+// Dirección del Automatizador de mensajes
+// ---------------------------------------------------------------------------------------------
+/** Solo https (o http en localhost, para pruebas). Devuelve la URL limpia, sin ruta con datos ajenos. */
+export function validateAutomatizadorUrl(raw: string): string {
+  let u: URL;
+  try { u = new URL(raw.trim()); } catch { throw new Error("Escribe la dirección completa, por ejemplo https://automatizador.vercel.app"); }
+  const local = u.hostname === "localhost" || u.hostname === "127.0.0.1";
+  if (u.protocol !== "https:" && !(local && u.protocol === "http:")) throw new Error("La dirección debe empezar por https://");
+  if (u.username || u.password) throw new Error("La dirección no puede llevar usuario ni contraseña.");
+  return u.toString();
+}
+export async function getAutomatizadorUrl(db: Db, orgId: string): Promise<string | null> {
+  const [row] = await db.select({ u: orgSettings.automatizadorUrl }).from(orgSettings).where(eq(orgSettings.orgId, orgId));
+  const stored = row?.u?.trim();
+  if (stored) return stored;
+  const env = process.env.AUTOMATIZADOR_URL?.trim();
+  try { return env ? validateAutomatizadorUrl(env) : null; } catch { return null; }
+}
+export async function saveAutomatizadorUrl(db: Db, orgId: string, actor: string, raw: string): Promise<string | null> {
+  const url = raw.trim() ? validateAutomatizadorUrl(raw) : null;
+  await db.insert(orgSettings).values({ orgId }).onConflictDoNothing();
+  await db.update(orgSettings).set({ automatizadorUrl: url, updatedAt: new Date() }).where(eq(orgSettings.orgId, orgId));
+  await db.insert(auditLog).values({ orgId, actor, action: "settings.automatizador_url", entity: orgId, detail: { url } });
+  return url;
+}

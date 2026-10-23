@@ -30,7 +30,10 @@ const config: NextConfig = {
     return [
       { source: "/:path*", headers: base },
       // Páginas, acciones y API nunca se guardan en cachés (los archivos estáticos de /_next sí, para que la app cargue rápido).
-      { source: "/((?!_next/static|_next/image|brand/).*)", headers: noStore },
+      { source: "/((?!_next/static|_next/image|brand/|api/public/).*)", headers: noStore },
+      // El logo y el tema público los usa también el Automatizador (otro dominio): sin esto el navegador bloquea la imagen.
+      { source: "/brand/:path*", headers: [{ key: "Cross-Origin-Resource-Policy", value: "cross-origin" }] },
+      { source: "/api/public/:path*", headers: [{ key: "Cross-Origin-Resource-Policy", value: "cross-origin" }] },
     ];
   },
   serverExternalPackages: ["pg", "@electric-sql/pglite", "exceljs"],

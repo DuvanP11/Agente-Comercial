@@ -127,6 +127,13 @@
       "when": 1792773980727,
       "tag": "0017_first_dragon_man",
       "breakpoints": true
+    },
+    {
+      "idx": 18,
+      "version": "7",
+      "when": 1792774787601,
+      "tag": "0018_mysterious_glorian",
+      "breakpoints": true
     }
   ]
 }

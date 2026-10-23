@@ -1,0 +1,1 @@
+ALTER TABLE "org_settings" ADD COLUMN "automatizador_url" text;

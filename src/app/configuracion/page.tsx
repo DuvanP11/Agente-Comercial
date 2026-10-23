@@ -1,8 +1,9 @@
 import Link from "next/link";
 import { ensureDefaultOrg, getDb } from "@/lib/db/client";
-import { getContactRules, getHiddenModules, getScoringConfig } from "@/lib/services/settings";
+import { getAutomatizadorUrl, getContactRules, getHiddenModules, getScoringConfig } from "@/lib/services/settings";
 import { canManageUsers } from "@/lib/permissions";
 import { requireNotHunter } from "@/lib/session";
+import { AutomatizadorUrl } from "./AutomatizadorUrl";
 import { ModuleSwitches } from "./ModuleSwitches";
 import { NAV } from "@/lib/nav";
 import { ContactRulesForm } from "./ContactRulesForm";
@@ -22,6 +23,7 @@ export default async function Configuracion() {
       <ScoringForm weights={cfg.weights} minCoverage={cfg.minCoverage} />
       <ContactRulesForm maxAttempts={rules.maxAttempts} />
       <ModuleSwitches hidden={hidden} canManage={canManageUsers(me.role)} />
+      <AutomatizadorUrl url={(await getAutomatizadorUrl(db, org)) ?? ""} canManage={canManageUsers(me.role)} />
       <section className="card space-y-2 text-sm" aria-label="Estado de los módulos">
         <h2 className="font-semibold">Estado de los módulos y qué falta</h2>
         <p className="text-muted"><b>Completo</b> = hace todo lo previsto. <b>Parcial</b> = funciona con datos reales, pero falta una parte que se explica en cada fila; casi siempre depende de algo externo (una clave, datos financieros, tarifas oficiales o una integración).</p>

@@ -89,12 +89,13 @@ export function AppShell({ items, hidden, canManage, brand, user, logout, home, 
                     const active = isActive(n);
                     return (
                       <li key={n.slug}>
-                        <Link href={n.href} aria-current={active ? "page" : undefined} onClick={() => report("click", n.href, n.label)}
+                        <Link href={n.href} aria-current={active ? "page" : undefined} onClick={() => report("click", n.href, n.label)} {...(n.external ? { target: "_blank", rel: "noopener" } : {})}
                           onMouseEnter={(e) => !wide && showTip(e, n.label, n.icon ?? "dashboard", STATUS_LABEL[n.status])} onMouseLeave={() => setTip(null)} onFocus={(e) => !wide && showTip(e, n.label, n.icon ?? "dashboard", STATUS_LABEL[n.status])} onBlur={() => setTip(null)}
                           className={`flex items-center gap-3 rounded-[var(--radius)] px-3 py-2 text-sm ${wide ? "" : "justify-center px-0"} ${active ? "" : "hover:bg-surface-2"}`}
                           style={active ? { background: "var(--color-primary)", color: "var(--color-on-primary)" } : undefined}>
                           <Icon name={n.icon ?? "dashboard"} size={19} />
                           {wide && <span className="min-w-0 flex-1 truncate">{n.label}</span>}
+                          {wide && n.external && <span className="text-xs opacity-70" aria-label="se abre en otra pestaña" title="Se abre en otra pestaña">↗</span>}
                           {wide && STATUS_LABEL[n.status] && <span className="text-[10px] opacity-70">{STATUS_LABEL[n.status]}</span>}
                         </Link>
                       </li>

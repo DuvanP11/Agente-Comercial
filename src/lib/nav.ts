@@ -4,6 +4,8 @@ export interface NavItem {
   slug: string; label: string; href: string; status: ModuleStatus; phase: string; note?: string;
   /** Sección del menú lateral e ícono. */
   group?: string; icon?: string;
+  /** Abre otra web (en pestaña nueva) en vez de una pantalla de esta. */
+  external?: boolean;
 }
 
 export const NAV: NavItem[] = [
@@ -16,6 +18,7 @@ export const NAV: NavItem[] = [
   { slug: "clientes", label: "Clientes existentes", href: "/clientes", status: "ready", phase: "3", group: "Prospección", icon: "building" },
   { slug: "campanas", label: "Campañas comerciales", href: "/campanas", status: "partial", phase: "6", note: "Mensajes redactados con IA y aprobados por una persona, portada, material adjunto, seguimientos y no-contactar; WhatsApp y correo se abren con el mensaje listo. Falta el envío automático (WhatsApp Business y Gmail API: requieren cuentas y permisos del administrador).", group: "Comercial", icon: "megaphone" },
   { slug: "bix", label: "Bix · agente de WhatsApp", href: "/bix", status: "partial", phase: "8", note: "Bix conversa por WhatsApp con los leads, mide su interés y los pasa a un Hunter con aviso en Google Chat. Falta: probar con la cuenta real de WhatsApp Business.", group: "Comercial", icon: "bot" },
+  { slug: "automatizador", label: "Automatizador de mensajes", href: "/automatizador", status: "ready", phase: "8", external: true, note: "Web aparte para preparar y enviar mensajes y comunicados a clientes. Se abre en otra pestaña y usa la misma apariencia de esta plataforma.", group: "Comercial", icon: "message" },
   { slug: "metas", label: "Metas y rendimiento", href: "/metas", status: "partial", phase: "9", note: "Metas editables; avance real solo de prospectos, calificados y contactos. Falta: metas de ingresos (datos financieros).", group: "Comercial", icon: "flag" },
   { slug: "mercado", label: "Inteligencia de mercado", href: "/mercado", status: "partial", phase: "5", note: "Conteos, embudo y gráficos con datos reales. Falta: tendencias en el tiempo y análisis con IA.", group: "Comercial", icon: "chart" },
   { slug: "agentes", label: "Agentes y skills", href: "/agentes", status: "partial", phase: "4", note: "Catálogo con estado real, configuración de IA e historial. Varios agentes aún funcionan solo con reglas.", group: "Inteligencia", icon: "bot" },

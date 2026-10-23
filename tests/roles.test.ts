@@ -22,9 +22,9 @@ describe("permisos por rol (puros)", () => {
     for (const r of ["admin", "head", "it", "gerencia"]) for (const p of ["/", "/usuarios", "/auditoria", "/configuracion", "/buscar"]) expect(canAccessPath(r, p), `${r} ${p}`).toBe(true);
     expect(canAccessPath("inventado", "/buscar")).toBe(false);
   });
-  it("menú: el Hunter ve 6 de Prospección, 4 de Comercial (con Bix) y Reportes; los demás ven todo", () => {
+  it("menú: el Hunter ve 6 de Prospección, 5 de Comercial (con Bix y el Automatizador) y Reportes; los demás ven todo", () => {
     const h = NAV.filter((n) => canSeeNavItem("hunter", n)).map((n) => n.slug).sort();
-    expect(h).toEqual(["analizar", "bix", "buscar", "campanas", "captar", "clientes", "importar", "mercado", "metas", "prospectos", "reportes"]);
+    expect(h).toEqual(["analizar", "automatizador", "bix", "buscar", "campanas", "captar", "clientes", "importar", "mercado", "metas", "prospectos", "reportes"]);
     for (const r of ["admin", "head", "it", "gerencia"]) expect(NAV.every((n) => canSeeNavItem(r, n))).toBe(true);
     expect(homeFor("hunter")).toBe("/bienvenida"); expect(homeFor("it")).toBe("/bienvenida");
     expect(isHunter("hunter") && !seesAllData("hunter") && seesAllData("it")).toBe(true);
@@ -94,5 +94,35 @@ describe("módulos del menú encendidos y apagados", () => {
     expect(cleanHidden("x")).toEqual([]);
     expect(isPathHidden(["agentes"], "/agentes")).toBe(true); expect(isPathHidden(["agentes"], "/agentes/abc")).toBe(true); expect(isPathHidden(["agentes"], "/agentesx")).toBe(false);
     expect(isPathHidden(["dashboard"], "/")).toBe(true); expect(isPathHidden(["dashboard"], "/buscar")).toBe(false);
+  });
+});
+
+import { publicTheme } from "@/lib/theme/public";
+import { DEFAULT_THEME, PROVISIONAL_THEME } from "@/lib/theme/tokens";
+import { getAutomatizadorUrl, saveAutomatizadorUrl, validateAutomatizadorUrl } from "@/lib/services/settings";
+describe("Automatizador: tema público y enlace", () => {
+  const brand = { hasLogo: false, hasIcon: false, tint: true, iconTint: true, version: "0" };
+  it("el tema público trae solo colores y formas; con paleta y modo auto trae claro y oscuro", () => {
+    const t = publicTheme(DEFAULT_THEME, brand, "https://ac.example");
+    expect(t).toMatchObject({ v: 1, scheme: "auto", logoUrl: null });
+    expect(t.light.brand).toBe("#5b2a86"); expect(t.dark?.brand).toBe("#b88ae6");
+    expect(Object.keys(t.light).sort()).toEqual(["accent", "bg", "border", "brand", "err", "muted", "ok", "surface", "text", "warn"]);
+    expect(JSON.stringify(t)).not.toMatch(/token|secret|password|email/i);
+  });
+  it("un tema de colores propios trae una sola variante, y el logo propio lleva su versión", () => {
+    const t = publicTheme({ ...PROVISIONAL_THEME, mode: "dark" }, { ...brand, hasLogo: true, version: "123" }, "https://ac.example");
+    expect(t).toMatchObject({ scheme: "dark", dark: null, logoUrl: "https://ac.example/brand/logo?v=123" });
+    expect(publicTheme(DEFAULT_THEME, brand, "x").version).not.toBe(publicTheme({ ...DEFAULT_THEME, radius: 4 }, brand, "x").version);
+  });
+  it("valida la dirección (https, sin credenciales) y la guarda; sin nada guardado no inventa una", async () => {
+    expect(() => validateAutomatizadorUrl("http://evil.com")).toThrow(/https/);
+    expect(() => validateAutomatizadorUrl("https://u:p@a.com")).toThrow(/usuario/);
+    expect(() => validateAutomatizadorUrl("no es url")).toThrow(/dirección/);
+    expect(validateAutomatizadorUrl("http://localhost:8791")).toBe("http://localhost:8791/");
+    const d = await createPgliteDb(); const o = await ensureDefaultOrg(d);
+    expect(await getAutomatizadorUrl(d, o)).toBeNull();
+    expect(await saveAutomatizadorUrl(d, o, "t", "https://automatizador.vercel.app")).toBe("https://automatizador.vercel.app/");
+    expect(await getAutomatizadorUrl(d, o)).toBe("https://automatizador.vercel.app/");
+    expect(await saveAutomatizadorUrl(d, o, "t", "")).toBeNull(); expect(await getAutomatizadorUrl(d, o)).toBeNull();
   });
 });

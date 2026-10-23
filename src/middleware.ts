@@ -18,6 +18,8 @@ export async function middleware(req: NextRequest, event: NextFetchEvent) {
   if (pathname === "/api/security/probe") return NextResponse.next();
   // Webhook de WhatsApp: lo llama Meta, sin sesión; la ruta valida la firma del cuerpo y rechaza todo lo demás.
   if (pathname === "/api/whatsapp/webhook") return NextResponse.next();
+  // Tema público (solo colores): lo lee el Automatizador de mensajes, que está en otro dominio y no tiene sesión.
+  if (pathname === "/api/public/theme") return NextResponse.next();
   // Escaneos: respuesta idéntica a «no existe» (no revela que hay una pantalla de acceso) y se deja constancia en la auditoría.
   const ip = ipOf(req);
   if (isScanPath(pathname, req.nextUrl.search)) {
