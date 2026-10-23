@@ -51,6 +51,7 @@ export default async function Auditoria({ searchParams }: { searchParams: Promis
       <HelpPanel title="Qué se registra (y qué no)">
         <ul className="list-disc space-y-1 pl-5">
           <li><b>Se registra:</b> inicios y cierres de sesión, intentos fallidos, cada pantalla abierta y cada clic en el menú, descargas (reportes y archivos), importaciones (con el nombre del archivo y cuántas filas), búsquedas, acciones comerciales (campañas, contactos, valoraciones), cambios de usuarios y de configuración, y escaneos bloqueados.</li>
+          <li><b>Automatizador de mensajes:</b> si la persona entra por el acceso del menú, también se registra qué secciones abre y qué acciones hace allá (por ejemplo «importó clientes», «abrió WhatsApp con un mensaje», «guardó una plantilla»). Esa web solo manda frases de una lista fija y cuántos fueron: <b>nunca</b> nombres, teléfonos, correos ni mensajes de clientes, que siguen únicamente en el navegador de cada persona. Si alguien abre el Automatizador directo por su dirección, no queda registro.</li>
           <li><b>No se registra:</b> contraseñas, el contenido de los mensajes ni los datos de los prospectos; solo qué se hizo y sobre qué.</li>
           <li>Cada línea guarda la persona, su rol, la dirección IP y el navegador. Es información personal de tus compañeros: úsala solo para seguridad y control (Ley 1581 de 2012).</li>
           <li>El registro no se puede editar ni borrar desde la plataforma.</li>

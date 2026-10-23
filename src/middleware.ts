@@ -20,6 +20,8 @@ export async function middleware(req: NextRequest, event: NextFetchEvent) {
   if (pathname === "/api/whatsapp/webhook") return NextResponse.next();
   // Tema público (solo colores): lo lee el Automatizador de mensajes, que está en otro dominio y no tiene sesión.
   if (pathname === "/api/public/theme") return NextResponse.next();
+  // Eventos del Automatizador: sin sesión de esta web; la ruta exige la firma, el origen configurado y valida cada evento contra una lista cerrada.
+  if (pathname === "/api/public/audit") return NextResponse.next();
   // Escaneos: respuesta idéntica a «no existe» (no revela que hay una pantalla de acceso) y se deja constancia en la auditoría.
   const ip = ipOf(req);
   if (isScanPath(pathname, req.nextUrl.search)) {

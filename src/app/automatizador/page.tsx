@@ -3,6 +3,7 @@ import { redirect } from "next/navigation";
 import { ensureDefaultOrg, getDb } from "@/lib/db/client";
 import { canManageUsers } from "@/lib/permissions";
 import { getAutomatizadorUrl, getHiddenModules } from "@/lib/services/settings";
+import { signAutomatizadorToken } from "@/lib/automatizador-audit";
 import { requireUser } from "@/lib/session";
 
 export const dynamic = "force-dynamic";
@@ -13,7 +14,11 @@ export default async function Automatizador() {
   const db = await getDb(), org = await ensureDefaultOrg(db);
   if ((await getHiddenModules(db, org)).includes("automatizador")) redirect("/bienvenida");
   const url = await getAutomatizadorUrl(db, org);
-  if (url) redirect(url);
+  if (url) {
+    // La firma viaja en el «#» (el navegador nunca lo envía a ningún servidor ni queda en registros) y le sirve al Automatizador para informar a la Auditoría.
+    const u = new URL(url); u.hash = `ac=${signAutomatizadorToken(me.id)}`;
+    redirect(u.toString());
+  }
   return (
     <div className="card max-w-xl space-y-2" role="status">
       <h1 className="text-xl font-bold">Falta la dirección del Automatizador</h1>

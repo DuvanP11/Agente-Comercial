@@ -10,7 +10,7 @@ export const CLIENT_KINDS: Kind[] = ["view", "click"];
 
 const MODULES: [string, string][] = [
   ["/bienvenida", "Inicio"], ["/buscar", "Buscar clientes"], ["/importar", "Importar prospectos"], ["/analizar", "Analizar clientes"], ["/captar", "Captar clientes"],
-  ["/prospectos", "Base de prospectos"], ["/clientes", "Clientes existentes"], ["/campanas", "Campañas"], ["/metas", "Metas"], ["/mercado", "Inteligencia de mercado"],
+  ["/automatizador", "Automatizador de mensajes"], ["/prospectos", "Base de prospectos"], ["/clientes", "Clientes existentes"], ["/campanas", "Campañas"], ["/metas", "Metas"], ["/mercado", "Inteligencia de mercado"],
   ["/agentes", "Agentes y skills"], ["/entrenamiento", "Entrenamiento de IA"], ["/integraciones", "Integraciones"], ["/reportes", "Reportes"], ["/configuracion", "Configuración"],
   ["/apariencia", "Apariencia"], ["/usuarios", "Usuarios"], ["/auditoria", "Auditoría"], ["/cuenta", "Mi cuenta"],
 ];
