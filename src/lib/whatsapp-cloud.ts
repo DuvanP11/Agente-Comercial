@@ -2,7 +2,7 @@ import { createHmac, timingSafeEqual } from "node:crypto";
 
 /** Adaptador de la API oficial de WhatsApp (Meta Cloud API). Sin las variables de entorno no envía nada. */
 export interface WaConfig { token: string; phoneId: string; verifyToken: string; appSecret: string; template: string | null; templateLang: string }
-const GRAPH = "https://graph.facebook.com/v21.0";
+const GRAPH = "https://graph.facebook.com/v25.0";
 
 export function waConfig(env: Record<string, string | undefined> = process.env): WaConfig | null {
   const token = env.WHATSAPP_TOKEN?.trim(), phoneId = env.WHATSAPP_PHONE_ID?.trim();
