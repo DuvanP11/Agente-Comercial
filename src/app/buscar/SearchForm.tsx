@@ -72,10 +72,6 @@ export function SearchForm({ sources, restored, aiReady = false }: { sources: So
   return (
     <div className="space-y-4">
       {!current.ready && <p role="status" className="card badge-warn">{current.label} no está conectado. {current.howTo} La búsqueda no devolverá resultados hasta entonces; no se muestran datos inventados.</p>}
-      {current.id === "google_places" && current.ready && (() => {
-        const n = Math.max(1, zones.split(",").filter((z) => z.trim()).length) * Math.max(1, categories.split(",").filter((c) => c.trim()).length);
-        return <p role="note" className="card text-sm badge-warn">Google Places <b>cobra por consulta</b>. Esta búsqueda hará hasta <b>{n}</b> {n === 1 ? "consulta" : "consultas"} (una por zona y rubro, hasta 20 resultados cada una). El teléfono y la web son de una tarifa superior. Revisa tu presupuesto y límite diario en Google Cloud.</p>;
-      })()}
       {current.id === "business_directory" && <p role="note" className="card text-sm">El <b>Registro Mercantil (RUES)</b> trae empresas reales con matrícula activa, su actividad económica y su NIT, pero <b>no trae teléfono, correo, web ni dirección</b>. Sirve para descubrir negocios y detectar si ya son clientes; el contacto se completa después en la ficha. No aplica zonas y la ciudad debe ser la principal de la Cámara de Comercio.</p>}
       {current.id === "openstreetmap" && <p role="note" className="card text-sm">OpenStreetMap es gratis y sin clave, pero es información colaborativa: encuentra bien nombre y dirección, y <b>pocos negocios traen teléfono o web</b>. Los resultados con más datos salen primero. El servidor público puede tardar o saturarse.</p>}
       <form action={action} className="card grid gap-3 md:grid-cols-2">
