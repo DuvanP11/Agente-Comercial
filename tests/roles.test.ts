@@ -78,3 +78,21 @@ describe("gestión de usuarios por rol", () => {
     expect((await updateUser(d, o, h.id, hh.id, { active: false })).active).toBe(false);
   });
 });
+
+import { getHiddenModules, saveHiddenModules } from "@/lib/services/settings";
+import { cleanHidden, isPathHidden } from "@/lib/nav";
+describe("módulos del menú encendidos y apagados", () => {
+  it("de fábrica solo «Agentes y skills» está apagado; se guarda y se lee; Configuración y Usuarios no se pueden apagar", async () => {
+    const d = await createPgliteDb(); const o = await ensureDefaultOrg(d);
+    expect(await getHiddenModules(d, o)).toEqual(["agentes"]);
+    expect(await saveHiddenModules(d, o, "t", ["mercado", "configuracion", "usuarios", "no-existe", "mercado", 7])).toEqual(["mercado"]);
+    expect(await getHiddenModules(d, o)).toEqual(["mercado"]);
+    expect(await saveHiddenModules(d, o, "t", [])).toEqual([]);
+    expect(await getHiddenModules(d, o)).toEqual([]);   // vacío guardado a propósito: ya no vuelve a los de fábrica
+  });
+  it("reconoce las rutas de un módulo apagado, también las internas, y «/» solo exacto", () => {
+    expect(cleanHidden("x")).toEqual([]);
+    expect(isPathHidden(["agentes"], "/agentes")).toBe(true); expect(isPathHidden(["agentes"], "/agentes/abc")).toBe(true); expect(isPathHidden(["agentes"], "/agentesx")).toBe(false);
+    expect(isPathHidden(["dashboard"], "/")).toBe(true); expect(isPathHidden(["dashboard"], "/buscar")).toBe(false);
+  });
+});

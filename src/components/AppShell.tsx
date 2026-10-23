@@ -3,7 +3,7 @@ import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
 import { useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { Icon } from "./icons";
-import type { NavItem } from "@/lib/nav";
+import { isPathHidden, type NavItem } from "@/lib/nav";
 
 const STATUS_LABEL = { ready: "", partial: "Parcial", pending: "Pendiente" } as const;
 const STORAGE = "pci_nav_collapsed";
@@ -11,8 +11,8 @@ const fold = (s: string) => s.normalize("NFD").replace(/[̀-ͯ]/g, "").toLowerCa
 const initials = (name: string) => name.split(/\s+/).filter(Boolean).slice(0, 2).map((w) => w[0]?.toUpperCase()).join("") || "?";
 
 /** Menú lateral agrupado, con buscador, botón para expandir/contraer, y el usuario al pie. En pantallas chicas se abre y cierra con un botón. */
-export function AppShell({ items, brand, user, logout, home, children }: {
-  items: NavItem[]; brand: ReactNode; user: { name: string; email: string; role: string }; logout: () => void | Promise<void>; home: string; children: ReactNode;
+export function AppShell({ items, hidden, canManage, brand, user, logout, home, children }: {
+  items: NavItem[]; hidden: string[]; canManage: boolean; brand: ReactNode; user: { name: string; email: string; role: string }; logout: () => void | Promise<void>; home: string; children: ReactNode;
 }) {
   const path = usePathname();
   const router = useRouter();
@@ -128,7 +128,15 @@ export function AppShell({ items, brand, user, logout, home, children }: {
           <span className="font-semibold">{tip.label}</span>{tip.note && <span className="text-xs text-muted">{tip.note}</span>}
         </div>
       )}
-      <main className="min-w-0 flex-1 p-4 md:p-8">{children}</main>
+      <main className="min-w-0 flex-1 p-4 md:p-8">
+        {isPathHidden(hidden, path) ? (
+          <div className="card max-w-xl space-y-2" role="status">
+            <h1 className="text-xl font-bold">Este módulo está desactivado</h1>
+            <p className="text-sm text-muted">Un administrador lo apagó y por eso no aparece en el menú.{canManage ? " Puedes volver a encenderlo en Configuración → Módulos del menú." : " Si lo necesitas, pídele a un administrador que lo encienda."}</p>
+            <div className="flex gap-2"><Link className="btn btn-primary" href={home}>Ir al inicio</Link>{canManage && <Link className="btn" href="/configuracion">Ir a Configuración</Link>}</div>
+          </div>
+        ) : children}
+      </main>
     </div>
   );
 }

@@ -280,6 +280,8 @@ export const orgSettings = pgTable("org_settings", {
   bixReady: boolean("bix_ready").notNull().default(false),
   bixReadyBy: text("bix_ready_by"),
   bixReadyAt: timestamp("bix_ready_at", { withTimezone: true }),
+  /** Módulos del menú apagados por un administrador (lista de slugs). null = nunca se configuró: aplican los de arranque. */
+  hiddenModules: jsonb("hidden_modules"),
   /** URL del webhook del espacio de Google Chat, cifrada (contiene una clave). */
   chatWebhookEnc: text("chat_webhook_enc"),
   updatedAt: ts("updated_at"),

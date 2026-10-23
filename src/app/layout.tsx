@@ -2,16 +2,21 @@ import type { Metadata } from "next";
 import "./globals.css";
 import { AppShell } from "@/components/AppShell";
 import { NAV } from "@/lib/nav";
-import { canSeeNavItem, homeFor } from "@/lib/permissions";
+import { canManageUsers, canSeeNavItem, homeFor } from "@/lib/permissions";
 import { getCurrentUser } from "@/lib/session";
 import { logoutAction } from "./cuenta/actions";
 import { BrandLogo } from "@/components/BrandLogo";
 import { ensureDefaultOrg, getDb } from "@/lib/db/client";
+import { getHiddenModules } from "@/lib/services/settings";
 import { getBrandInfo, type BrandInfo } from "@/lib/services/brand";
 import { getActiveTheme } from "@/lib/theme/server";
 import { resolveTheme, themeCss } from "@/lib/theme/tokens";
 
 export const dynamic = "force-dynamic";
+
+async function hiddenModules(): Promise<string[]> {
+  try { const db = await getDb(); return await getHiddenModules(db, await ensureDefaultOrg(db)); } catch { return []; }
+}
 
 async function brand(): Promise<BrandInfo> {
   try { const db = await getDb(); return await getBrandInfo(db, await ensureDefaultOrg(db)); } catch { return { hasLogo: false, hasIcon: false, tint: true, iconTint: true, version: "0" }; }
@@ -26,13 +31,13 @@ export async function generateMetadata(): Promise<Metadata> {
 }
 
 export default async function RootLayout({ children }: { children: React.ReactNode }) {
-  const [theme, b, user] = await Promise.all([getActiveTheme(), brand(), getCurrentUser()]);
+  const [theme, b, user, hidden] = await Promise.all([getActiveTheme(), brand(), getCurrentUser(), hiddenModules()]);
   return (
     <html lang="es">
       <head><style dangerouslySetInnerHTML={{ __html: themeCss(theme) }} /></head>
       <body>
         {user ? (
-          <AppShell items={NAV.filter((n) => canSeeNavItem(user.role, n))} user={{ name: user.name, email: user.email, role: user.role }} home={homeFor(user.role)} logout={logoutAction}
+          <AppShell items={NAV.filter((n) => canSeeNavItem(user.role, n) && !hidden.includes(n.slug))} hidden={hidden} canManage={canManageUsers(user.role)} user={{ name: user.name, email: user.email, role: user.role }} home={homeFor(user.role)} logout={logoutAction}
             brand={<div><BrandLogo version={b.version} tint={b.tint} height={30} /><div className="mt-1 text-xs text-muted">Commercial Intelligence</div></div>}>
             {children}
           </AppShell>

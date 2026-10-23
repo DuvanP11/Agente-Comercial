@@ -27,3 +27,13 @@ export const NAV: NavItem[] = [
   { slug: "auditoria", label: "Auditoría", href: "/auditoria", status: "ready", phase: "2", group: "Sistema", icon: "eye", note: "Quién hizo qué: accesos, pantallas, descargas, importaciones y acciones (Admin, Head, IT y Gerencia)." },
   { slug: "usuarios", label: "Usuarios", href: "/usuarios", status: "ready", phase: "2", group: "Sistema", icon: "users", note: "Crear, editar y desactivar usuarios, cambiar roles y restablecer contraseñas (Admin, Gerencia y Head; IT solo lee)." },
 ];
+
+/** Módulos que nunca se pueden apagar: sin ellos nadie podría volver a encender los demás. */
+export const PROTECTED_MODULES: readonly string[] = ["configuracion", "usuarios"];
+/** Apagados de fábrica mientras nadie configure nada. */
+export const DEFAULT_HIDDEN_MODULES: readonly string[] = ["agentes"];
+/** Solo slugs que existen y que se pueden apagar. */
+export const cleanHidden = (v: unknown): string[] => (Array.isArray(v) ? [...new Set(v.filter((x): x is string => typeof x === "string" && NAV.some((n) => n.slug === x) && !PROTECTED_MODULES.includes(x)))] : []);
+/** ¿Esta ruta pertenece a un módulo apagado? («/» solo coincide exacto.) */
+export const isPathHidden = (hidden: readonly string[], path: string) =>
+  NAV.some((n) => hidden.includes(n.slug) && (path === n.href || (n.href !== "/" && path.startsWith(n.href + "/"))));

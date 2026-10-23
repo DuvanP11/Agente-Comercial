@@ -3,6 +3,7 @@ import { z } from "zod";
 import type { Db } from "../db/client";
 import { DEFAULT_RULES, parseRules, type ContactRules } from "../contact-tracking";
 import { combineGuidance, parseTraining, guidanceText, type Training } from "../training";
+import { cleanHidden, DEFAULT_HIDDEN_MODULES } from "../nav";
 import { auditLog, orgSettings, prospects, trainingLessons } from "../db/schema";
 import { CRITERION_LABELS, DEFAULT_WEIGHTS, MIN_COVERAGE, scoreProspect, type CriterionAssessment, type CriterionKey } from "../scoring/score";
 
@@ -102,4 +103,19 @@ export async function saveContactRules(db: Db, orgId: string, input: unknown, ac
     .onConflictDoUpdate({ target: orgSettings.orgId, set: { contactRules: rules, updatedAt: now } });
   await db.insert(auditLog).values({ orgId, actor, action: "settings.contact_rules", entity: orgId, detail: rules });
   return rules;
+}
+
+// ---------------------------------------------------------------------------------------------
+// Módulos del menú encendidos / apagados
+// ---------------------------------------------------------------------------------------------
+export async function getHiddenModules(db: Db, orgId: string): Promise<string[]> {
+  const [row] = await db.select({ h: orgSettings.hiddenModules }).from(orgSettings).where(eq(orgSettings.orgId, orgId));
+  return row?.h == null ? [...DEFAULT_HIDDEN_MODULES] : cleanHidden(row.h);
+}
+export async function saveHiddenModules(db: Db, orgId: string, actor: string, hidden: unknown): Promise<string[]> {
+  const list = cleanHidden(hidden);
+  await db.insert(orgSettings).values({ orgId }).onConflictDoNothing();
+  await db.update(orgSettings).set({ hiddenModules: list, updatedAt: new Date() }).where(eq(orgSettings.orgId, orgId));
+  await db.insert(auditLog).values({ orgId, actor, action: "modules.visibility", entity: orgId, detail: { hidden: list } });
+  return list;
 }

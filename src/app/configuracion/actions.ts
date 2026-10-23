@@ -1,9 +1,9 @@
 "use server";
 import { track } from "@/lib/track";
-import { requireNotHunter } from "@/lib/session";
+import { requireManager, requireNotHunter } from "@/lib/session";
 import { revalidatePath } from "next/cache";
 import { ensureDefaultOrg, getDb } from "@/lib/db/client";
-import { resetScoringConfig, saveContactRules, saveScoringConfig } from "@/lib/services/settings";
+import { resetScoringConfig, saveContactRules, saveHiddenModules, saveScoringConfig } from "@/lib/services/settings";
 
 export interface ConfigState { ok?: string; error?: string }
 
@@ -36,5 +36,16 @@ export async function saveContactRulesAction(maxAttempts: number): Promise<Confi
     revalidatePath("/configuracion"); revalidatePath("/prospectos", "layout");
     await track("admin", "Cambió el máximo de intentos de contacto", { maximo: r.maxAttempts }, "/configuracion");
     return { ok: `Guardado: máximo ${r.maxAttempts} intento${r.maxAttempts === 1 ? "" : "s"} por prospecto. Se aplica desde ahora, también a los que ya estaban contactados.` };
+  } catch (e) { return { error: e instanceof Error ? e.message : "No se pudo guardar." }; }
+}
+
+export async function saveModulesAction(hidden: string[]): Promise<ConfigState & { hidden?: string[] }> {
+  const me = await requireManager();
+  try {
+    const db = await getDb();
+    const list = await saveHiddenModules(db, await ensureDefaultOrg(db), me.id, hidden);
+    revalidatePath("/", "layout");
+    await track("admin", "Cambió los módulos visibles del menú", { apagados: list.length }, "/configuracion");
+    return { ok: "Guardado.", hidden: list };
   } catch (e) { return { error: e instanceof Error ? e.message : "No se pudo guardar." }; }
 }

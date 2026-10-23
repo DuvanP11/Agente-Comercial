@@ -1,6 +1,9 @@
 import Link from "next/link";
 import { ensureDefaultOrg, getDb } from "@/lib/db/client";
-import { getContactRules, getScoringConfig } from "@/lib/services/settings";
+import { getContactRules, getHiddenModules, getScoringConfig } from "@/lib/services/settings";
+import { canManageUsers } from "@/lib/permissions";
+import { requireNotHunter } from "@/lib/session";
+import { ModuleSwitches } from "./ModuleSwitches";
 import { NAV } from "@/lib/nav";
 import { ContactRulesForm } from "./ContactRulesForm";
 import { ScoringForm } from "./ScoringForm";
@@ -8,15 +11,17 @@ import { ScoringForm } from "./ScoringForm";
 export const dynamic = "force-dynamic";
 
 export default async function Configuracion() {
+  const me = await requireNotHunter();
   const db = await getDb();
   const org = await ensureDefaultOrg(db);
-  const cfg = await getScoringConfig(db, org), rules = await getContactRules(db, org);
+  const cfg = await getScoringConfig(db, org), rules = await getContactRules(db, org), hidden = await getHiddenModules(db, org);
   return (
     <div className="space-y-4">
       <header><h1 className="text-2xl font-bold">Configuración</h1>
         <p className="text-sm text-muted">Ajustes de la plataforma que cambian cómo se calcula y se muestra la información.</p></header>
       <ScoringForm weights={cfg.weights} minCoverage={cfg.minCoverage} />
       <ContactRulesForm maxAttempts={rules.maxAttempts} />
+      <ModuleSwitches hidden={hidden} canManage={canManageUsers(me.role)} />
       <section className="card space-y-2 text-sm" aria-label="Estado de los módulos">
         <h2 className="font-semibold">Estado de los módulos y qué falta</h2>
         <p className="text-muted"><b>Completo</b> = hace todo lo previsto. <b>Parcial</b> = funciona con datos reales, pero falta una parte que se explica en cada fila; casi siempre depende de algo externo (una clave, datos financieros, tarifas oficiales o una integración).</p>
