@@ -3,7 +3,7 @@ import { eq } from "drizzle-orm";
 import { createPgliteDb, ensureDefaultOrg } from "@/lib/db/client";
 import { prospects } from "@/lib/db/schema";
 import type { AiProvider } from "@/lib/ai/provider";
-import { AiError } from "@/lib/ai/provider";
+import { AiError, createFailoverProvider, createProvider, humanWait, parseResetDuration, retryAfterFrom, waitFromMessage } from "@/lib/ai/provider";
 import { AI_ACTOR, analyzeAndSaveBatch, isAiScore } from "@/lib/services/analysis-batch";
 import { saveAssessment, setQualification, type StoredScore } from "@/lib/services/analysis";
 import { ingestProspects } from "@/lib/services/prospects";
@@ -68,6 +68,7 @@ describe("analizar en lote con IA", () => {
     const lim = ai(new AiError("rate_limit", "límite de uso"));
     const w = await world(3); const r2 = await analyzeAndSaveBatch(w.d, w.o, w.ids, lim.p);
     expect(r2.stopped).toMatch(/límite de uso/); expect(lim.calls).toBeLessThanOrEqual(2); expect(r2.saved).toBe(0);
+    expect(r2.failed).toBe(0); expect(r2.remaining).toHaveLength(3); // no es culpa de los prospectos: todos quedan pendientes
   });
   it("sin IA configurada no simula nada; respeta el tope por llamada", async () => {
     const { d, o, ids } = await world(3);
@@ -76,5 +77,42 @@ describe("analizar en lote con IA", () => {
     const f = ai(GOOD);
     const r2 = await analyzeAndSaveBatch(d, o, ids, f.p, { max: 2 });
     expect(r2.saved).toBe(2); expect(r2.pending).toBe(1); expect(f.calls).toBe(2);
+  });
+});
+
+describe("límite del proveedor de IA: cuánto esperar", () => {
+  it("lee los encabezados del proveedor (retry-after y x-ratelimit-reset-*)", () => {
+    const h = (o: Record<string, string>) => ({ get: (n: string) => o[n.toLowerCase()] ?? null });
+    expect(retryAfterFrom(h({ "retry-after": "30" }))).toBe(30);
+    expect(retryAfterFrom(h({ "retry-after": "Wed, 21 Oct 2026 07:28:30 GMT" }), Date.parse("Wed, 21 Oct 2026 07:28:00 GMT"))).toBe(30);
+    expect(retryAfterFrom(h({ "x-ratelimit-reset-tokens": "7.66s" }))).toBe(8);
+    expect(retryAfterFrom(h({ "x-ratelimit-reset-requests": "2m59.56s", "x-ratelimit-reset-tokens": "1.5s" }))).toBe(180);
+    expect(retryAfterFrom(h({ "retry-after": "999999999" }))).toBe(86_400);
+    expect(retryAfterFrom(h({}))).toBeUndefined(); expect(retryAfterFrom(h({ "retry-after": "basura" }))).toBeUndefined();
+    expect([parseResetDuration("1h2m3s"), parseResetDuration("450ms"), parseResetDuration("nada"), parseResetDuration("")]).toEqual([3723, 0.45, null, null]);
+    expect([humanWait(30), humanWait(120), humanWait(7200)]).toEqual(["30 s", "2 min", "2 h"]);
+    expect([waitFromMessage("x. Reintenta en 45 s."), waitFromMessage("Reintenta en 3 min. Reintenta en 2 h."), waitFromMessage("Reintenta en unos minutos."), waitFromMessage(null)]).toEqual([45, 7200, null, null]);
+  });
+  it("un 429 real del proveedor trae cuánto esperar en el mensaje", async () => {
+    const f = (async () => new Response("{}", { status: 429, headers: { "retry-after": "20" } })) as typeof fetch;
+    const prov = createProvider({ baseUrl: "http://x", apiKey: "k", model: "m", timeoutMs: 1000 }, f);
+    const e = await prov.complete({ system: "s", user: "u", temperature: 0 } as never).catch((x) => x);
+    expect(e).toMatchObject({ code: "rate_limit", retryAfterSec: 20 }); expect(e.message).toMatch(/Reintenta en 20 s/);
+  });
+  it("con varios proveedores solo se espera si TODOS dijeron cuánto; se toma el menor", async () => {
+    const lim = (sec?: number): AiProvider => ({ model: "m", async complete() { throw new AiError("rate_limit", "límite de uso", sec); } });
+    const a = await createFailoverProvider([{ label: "A", provider: lim(60) }, { label: "B", provider: lim(25) }]).complete({} as never).catch((x) => x);
+    expect(a.retryAfterSec).toBe(25); expect(a.message).toMatch(/Reintenta en 25 s\.$/);
+    const b = await createFailoverProvider([{ label: "A", provider: lim(60) }, { label: "B", provider: lim(undefined) }]).complete({} as never).catch((x) => x);
+    expect(b.retryAfterSec).toBeUndefined();
+  });
+  it("el lote devuelve cuánto esperar y qué quedó pendiente, para continuar justo ahí", async () => {
+    const w = await world(4); let n = 0;
+    const p: AiProvider = { model: "f", async complete() { n++; if (n === 3) throw new AiError("rate_limit", "El proveedor de IA alcanzó su límite de uso. Reintenta en 30 s.", 30); return { text: GOOD, promptTokens: 1, completionTokens: 1 } as never; } } as AiProvider;
+    const r = await analyzeAndSaveBatch(w.d, w.o, w.ids, p);
+    expect(r.saved).toBe(2); expect(r.retryAfterSec).toBe(30); expect(r.stopped).toMatch(/límite de uso/);
+    expect(r.remaining).toEqual(w.ids.slice(2)); expect(r.failed).toBe(0);
+    const again = await analyzeAndSaveBatch(w.d, w.o, r.remaining!, p);        // continúa solo con los pendientes
+    expect(again.saved).toBe(2); expect(again.remaining).toEqual([]);
   });
 });

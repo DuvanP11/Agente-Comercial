@@ -6,6 +6,7 @@ import { analyzeManyAction } from "./actions";
 const SEL = "input[data-analyze]";
 const checked = () => [...document.querySelectorAll<HTMLInputElement>(`${SEL}:checked`)].map((x) => x.dataset.analyze!);
 const CHUNK = 5;
+const MAX_AUTO_WAIT = 120; // segundos: hasta aquí se espera solo; más que eso (cupo del día) se detiene
 
 /** Casilla de la cabecera: elige o quita todos los prospectos de la tabla. */
 export function SelectAllBox() {
@@ -31,7 +32,9 @@ export function BatchBar({ visibleIds, unratedIds, aiReady }: { visibleIds: stri
   const [running, setRunning] = useState(false);
   const [prog, setProg] = useState({ done: 0, total: 0, saved: 0, skipped: 0, failed: 0 });
   const [problems, setProblems] = useState<Result[]>([]);
-  const [note, setNote] = useState<string | null>(null);
+  const [note, setNote] = useState<{ text: string; warn: boolean } | null>(null);
+  const [pending, setPending] = useState<string[]>([]);
+  const [waiting, setWaiting] = useState(0);
   const stop = useRef(false);
 
   useEffect(() => {
@@ -40,24 +43,47 @@ export function BatchBar({ visibleIds, unratedIds, aiReady }: { visibleIds: stri
     return () => document.removeEventListener("change", sync);
   }, []);
 
-  const run = async (ids: string[], label: string) => {
-    if (!ids.length) { setNote("No hay prospectos para analizar con esa opción."); return; }
+  const run = async (ids: string[], label: string, resume = false) => {
+    if (!ids.length) { setNote({ text: "No hay prospectos para analizar con esa opción.", warn: true }); return; }
     const msg = `Se harán hasta ${ids.length} consulta(s) a la IA (${label}). ${includeRated ? "OJO: los que ya tienen valoración, incluidas las hechas por una persona, se REEMPLAZAN. " : "Los que ya tienen valoración se omiten. "}Cada resultado queda marcado «IA (sin revisar)» hasta que una persona lo revise. ¿Continuar?`;
-    if (ids.length > 3 && !confirm(msg)) return;
-    setRunning(true); setNote(null); setProblems([]); stop.current = false;
-    let t = { done: 0, total: ids.length, saved: 0, skipped: 0, failed: 0 }; setProg(t);
-    const bad: Result[] = []; let halted: string | null = null;
-    for (let i = 0; i < ids.length && !stop.current; i += CHUNK) {
-      const slice = ids.slice(i, i + CHUNK);
+    if (!resume && ids.length > 3 && !confirm(msg)) return;
+    setRunning(true); setNote(null); setProblems([]); setPending([]); setWaiting(0); stop.current = false;
+    let t = resume ? prog : { done: 0, total: ids.length, saved: 0, skipped: 0, failed: 0 };
+    if (resume) t = { ...t, total: t.done + ids.length };
+    setProg(t);
+    const bad: Result[] = resume ? [...problems] : []; let halted: string | null = null;
+    const queue = [...ids]; let autoWaits = 0;
+    while (queue.length && !stop.current) {
+      const slice = queue.splice(0, CHUNK);
       const r = await analyzeManyAction(slice, includeRated);
-      if (r.error) { halted = r.error; break; }
-      t = { ...t, done: t.done + slice.length, saved: t.saved + r.saved, skipped: t.skipped + r.skipped, failed: t.failed + r.failed }; setProg(t);
+      if (r.error) { queue.unshift(...slice); halted = r.error; break; }
+      const back = new Set(r.remaining ?? []); // los que el proveedor no dejó analizar: se repiten
+      const finished = slice.length - back.size;
+      t = { ...t, done: t.done + finished, saved: t.saved + r.saved, skipped: t.skipped + r.skipped - back.size, failed: t.failed + r.failed }; setProg(t);
       for (const it of r.items) if (it.state === "error") bad.push({ name: it.name || "Prospecto", reason: it.reason, state: it.state });
       setProblems([...bad]);
-      if (r.stopped && /límite de uso|no está configurada/i.test(r.stopped)) { halted = r.stopped; break; }
+      if (r.stopped && /no está configurada/i.test(r.stopped)) { halted = r.stopped; break; }
+      if (back.size) {
+        queue.unshift(...slice.filter((id) => back.has(id)));
+        if (r.stopped && /límite de uso/i.test(r.stopped)) {
+          const wait = r.retryAfterSec ?? 0;
+          // Límite corto (por minuto): se espera y se sigue solo. Límite largo (cupo del día) o desconocido: se detiene y queda el botón para continuar.
+          if (wait > 0 && wait <= MAX_AUTO_WAIT && autoWaits < 8) {
+            autoWaits++;
+            for (let left = Math.ceil(wait) + 1; left > 0 && !stop.current; left--) { setWaiting(left); await new Promise((res) => setTimeout(res, 1000)); }
+            setWaiting(0); continue;
+          }
+          halted = `El proveedor de IA alcanzó su límite de uso${wait > 0 ? ` (pide esperar ${wait >= 90 ? `${Math.ceil(wait / 60)} min` : `${wait} s`})` : ""}. Se detuvo el lote; lo ya analizado quedó guardado.`;
+          break;
+        }
+      }
     }
-    setRunning(false);
-    setNote(halted ?? (stop.current ? `Detenido. Se analizaron ${t.saved} de ${t.total}.` : `Listo: ${t.saved} analizado(s)${t.skipped ? `, ${t.skipped} omitido(s)` : ""}${t.failed ? `, ${t.failed} con error` : ""}.`));
+    setRunning(false); setWaiting(0);
+    const left = [...queue];
+    setPending(left);
+    if (halted) setNote({ text: halted + (left.length ? ` Quedan ${left.length} por analizar.` : ""), warn: true });
+    else if (stop.current) setNote({ text: `Detenido. Se analizaron ${t.saved}${left.length ? `; quedan ${left.length} sin analizar` : ""}.`, warn: left.length > 0 });
+    else setNote({ text: `Listo: ${t.saved} analizado(s)${t.skipped ? `, ${t.skipped} omitido(s)` : ""}${t.failed ? `, ${t.failed} con error` : ""}.`, warn: false });
     router.refresh();
   };
 
@@ -81,7 +107,9 @@ export function BatchBar({ visibleIds, unratedIds, aiReady }: { visibleIds: stri
           <div className="h-2 w-full overflow-hidden rounded-full" style={{ background: "var(--color-surface-2)" }}><div className="h-2 rounded-full" style={{ width: `${pct}%`, background: "var(--color-primary)", transition: "width .3s" }} /></div>
           <p className="text-xs text-muted">{prog.done} de {prog.total} revisados · {prog.saved} analizados · {prog.skipped} omitidos · {prog.failed} con error{running ? " (la IA tarda unos segundos por prospecto)" : ""}</p>
         </div>)}
-      <div role="status" aria-live="polite">{note && <p className="text-sm badge-ok">{note}</p>}</div>
+      {waiting > 0 && <p role="status" className="text-sm badge-warn">El proveedor de IA pidió esperar: sigo solo en {waiting} s… (puedes pulsar «Detener»).</p>}
+      <div role="status" aria-live="polite">{note && <p className={`text-sm ${note.warn ? "badge-warn" : "badge-ok"}`}>{note.text}</p>}</div>
+      {!running && pending.length > 0 && <button className="btn btn-primary" onClick={() => run(pending, "los que quedaron pendientes", true)}>Continuar con los {pending.length} pendientes</button>}
       {problems.length > 0 && <ul className="list-disc pl-5 text-sm">{problems.slice(0, 20).map((x, i) => <li key={i} className="badge-bad"><b>{x.name}:</b> {x.reason}</li>)}{problems.length > 20 && <li className="text-muted">…y {problems.length - 20} más.</li>}</ul>}
     </section>
   );

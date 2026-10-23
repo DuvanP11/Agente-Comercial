@@ -11,8 +11,37 @@ export interface AiConfig { baseUrl: string; apiKey: string; model: string; time
 
 export type AiErrorCode = "not_configured" | "auth" | "rate_limit" | "timeout" | "http" | "bad_response" | "network";
 export class AiError extends Error {
-  constructor(public code: AiErrorCode, message: string) { super(message); this.name = "AiError"; }
+  /** Solo en rate_limit: cuántos segundos pide esperar el proveedor, si lo informó. */
+  constructor(public code: AiErrorCode, message: string, public retryAfterSec?: number) { super(message); this.name = "AiError"; }
 }
+
+/** «7.66s», «2m59.56s», «1h2m» (formato de los encabezados x-ratelimit-reset-*) → segundos. */
+export function parseResetDuration(v: string | null | undefined): number | null {
+  if (!v) return null;
+  const m = /^(?:(\d+(?:\.\d+)?)h)?(?:(\d+(?:\.\d+)?)m(?!s))?(?:(\d+(?:\.\d+)?)s)?(?:(\d+(?:\.\d+)?)ms)?$/.exec(v.trim());
+  if (!m || !m[0]) return null;
+  const sec = (Number(m[1] ?? 0) * 3600) + (Number(m[2] ?? 0) * 60) + Number(m[3] ?? 0) + (Number(m[4] ?? 0) / 1000);
+  return Number.isFinite(sec) && sec > 0 ? sec : null;
+}
+/** Cuánto esperar tras un 429: `retry-after` (segundos o fecha) o, si no, el menor «reset» que informe el proveedor. Acotado a 24 h. */
+export function retryAfterFrom(h: { get(n: string): string | null }, now = Date.now()): number | undefined {
+  let sec: number | null = null;
+  const ra = h.get("retry-after");
+  if (ra) { const n = Number(ra); sec = Number.isFinite(n) ? n : (Date.parse(ra) - now) / 1000; }
+  if (sec === null || !Number.isFinite(sec) || sec <= 0) {
+    const c = [h.get("x-ratelimit-reset-requests"), h.get("x-ratelimit-reset-tokens")].map(parseResetDuration).filter((x): x is number => x !== null);
+    sec = c.length ? Math.max(...c) : null;
+  }
+  return sec !== null && Number.isFinite(sec) && sec > 0 ? Math.min(Math.ceil(sec), 86_400) : undefined;
+}
+/** Lee de un mensaje de error el «Reintenta en N s/min/h» (el último que aparezca) y lo devuelve en segundos. */
+export function waitFromMessage(msg: string | null | undefined): number | null {
+  const all = [...String(msg ?? "").matchAll(/Reintenta en (\d+(?:\.\d+)?) (s|min|h)\b/g)];
+  const m = all[all.length - 1];
+  return m ? Number(m[1]) * (m[2] === "h" ? 3600 : m[2] === "min" ? 60 : 1) : null;
+}
+/** «45 s», «3 min», «2 h»: para decirlo en la pantalla. */
+export const humanWait = (sec: number) => (sec < 90 ? `${Math.ceil(sec)} s` : sec < 5400 ? `${Math.ceil(sec / 60)} min` : `${Math.ceil(sec / 3600)} h`);
 
 export interface FailedAttempt { label: string; code: AiErrorCode }
 export interface Completion {
@@ -101,7 +130,11 @@ export function createProvider(cfg: AiConfig, fetchImpl: typeof fetch = fetch): 
         throw new AiError("network", "No se pudo conectar con el proveedor de IA. Revisa AI_BASE_URL.");
       }
       if (res.status === 401 || res.status === 403) throw new AiError("auth", "El proveedor de IA rechazó la clave (AI_API_KEY).");
-      if (res.status === 429) throw new AiError("rate_limit", "El proveedor de IA alcanzó su límite de uso. Reintenta en unos minutos.");
+      if (res.status === 429) {
+        const wait = retryAfterFrom(res.headers);
+        // «Reintenta en N s» lo lee el análisis en lote para esperar y seguir solo cuando el límite es corto.
+        throw new AiError("rate_limit", `El proveedor de IA alcanzó su límite de uso. Reintenta en ${wait ? humanWait(wait) : "unos minutos"}.`, wait);
+      }
       if (!res.ok) throw new AiError("http", `El proveedor de IA respondió ${res.status}.`);
       let data: { choices?: { message?: { content?: unknown } }[]; usage?: { prompt_tokens?: number; completion_tokens?: number }; model?: string };
       try { data = await res.json(); } catch { throw new AiError("bad_response", "El proveedor de IA devolvió una respuesta que no es JSON."); }
@@ -138,6 +171,7 @@ export function createFailoverProvider(chain: { label: string; provider: AiProvi
       const order = active.length ? active : chain; // todos en pausa: se prueban igual
       const attempted: FailedAttempt[] = [];
       const reasons: string[] = [];
+      const retryWaits: number[] = [];
       // Los que se saltaron por pausa también se informan.
       for (const c of chain) if (!order.includes(c)) attempted.push({ label: c.label, code: "rate_limit" });
       for (const c of order) {
@@ -149,10 +183,14 @@ export function createFailoverProvider(chain: { label: string; provider: AiProvi
           const code: AiErrorCode = e instanceof AiError ? e.code : "network";
           attempted.push({ label: c.label, code });
           reasons.push(`${c.label}: ${e instanceof AiError ? e.message : "error inesperado"}`);
-          pausedUntil.set(c.label, now() + (opts.cooldownMs ?? COOLDOWN_BY_CODE[code] ?? 60_000));
+          const waits = e instanceof AiError && e.retryAfterSec ? [e.retryAfterSec] : [];
+          pausedUntil.set(c.label, now() + (opts.cooldownMs ?? (waits.length ? waits[0] * 1000 : COOLDOWN_BY_CODE[code] ?? 60_000)));
+          if (waits.length) retryWaits.push(waits[0]);
         }
       }
-      throw new AiError(attempted[attempted.length - 1]?.code ?? "network", `Ningún proveedor de IA respondió. ${reasons.join(" | ")}`);
+      const allLimited = attempted.length > 0 && attempted.every((a) => a.code === "rate_limit");
+      const wait = allLimited && retryWaits.length === attempted.length ? Math.min(...retryWaits) : undefined; // solo si TODOS dijeron cuánto esperar
+      throw new AiError(attempted[attempted.length - 1]?.code ?? "network", `Ningún proveedor de IA respondió. ${reasons.join(" | ")}${wait ? ` Reintenta en ${humanWait(wait)}.` : ""}`, wait);
     },
   };
 }

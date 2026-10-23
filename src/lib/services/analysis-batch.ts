@@ -1,5 +1,5 @@
 import { and, eq } from "drizzle-orm";
-import type { AiProvider } from "../ai/provider";
+import { waitFromMessage, type AiProvider } from "../ai/provider";
 import type { Db } from "../db/client";
 import { prospects } from "../db/schema";
 import { DEFAULT_WEIGHTS, type CriterionKey } from "../scoring/score";
@@ -11,7 +11,11 @@ export const AI_ACTOR = "IA (sin revisar)";
 export const isAiScore = (s: StoredScore | null | undefined) => !!s && s.assessedBy === AI_ACTOR;
 
 export interface BatchItem { prospectId: string; name: string; state: "saved" | "skipped" | "error"; priority: number | null; reason?: string }
-export interface AnalyzeSaveResult { items: BatchItem[]; saved: number; skipped: number; failed: number; pending: number; stopped?: string }
+export interface AnalyzeSaveResult {
+  items: BatchItem[]; saved: number; skipped: number; failed: number; pending: number; stopped?: string;
+  /** Si se detuvo por el límite del proveedor: cuántos segundos pidió esperar (si lo informó) y qué prospectos quedaron sin analizar de esta tanda. */
+  retryAfterSec?: number; remaining?: string[];
+}
 
 /**
  * Analiza varios prospectos con la IA y GUARDA cada valoración marcada «IA (sin revisar)».
@@ -27,7 +31,8 @@ export async function analyzeAndSaveBatch(
   const max = opts.max ?? 5, deadline = now() + (opts.deadlineMs ?? 45_000);
   const ids = [...new Set(prospectIds)].slice(0, 60);
   const items: BatchItem[] = [];
-  let saved = 0, stopped: string | undefined;
+  let saved = 0, stopped: string | undefined, retryAfterSec: number | undefined;
+  const remaining: string[] = [];
   const skip = (prospectId: string, name: string, reason: string) => items.push({ prospectId, name, state: "skipped", priority: null, reason });
   if (!provider) return { items: ids.map((prospectId) => ({ prospectId, name: "", state: "error" as const, priority: null, reason: "La IA no está configurada." })), saved: 0, skipped: 0, failed: ids.length, pending: 0, stopped: "La IA no está configurada (ver Integraciones)." };
 
@@ -38,15 +43,19 @@ export async function analyzeAndSaveBatch(
     if (p.doNotContact) { skip(id, p.name, "Marcado «No contactar»."); continue; }
     const cur = p.scoreJson as StoredScore | null;
     if (cur && !opts.includeRated) { skip(id, p.name, "Ya tiene una valoración."); continue; }
-    if (stopped) { skip(id, p.name, stopped); continue; }
-    if (saved >= max) { skip(id, p.name, "Límite por llamada: se continúa en la siguiente."); continue; }
-    if (now() > deadline) { stopped = "Se agotó el tiempo de esta tanda: se continúa en la siguiente."; skip(id, p.name, stopped); continue; }
+    if (stopped) { skip(id, p.name, stopped); remaining.push(id); continue; }
+    if (saved >= max) { skip(id, p.name, "Límite por llamada: se continúa en la siguiente."); remaining.push(id); continue; }
+    if (now() > deadline) { stopped = "Se agotó el tiempo de esta tanda: se continúa en la siguiente."; skip(id, p.name, stopped); remaining.push(id); continue; }
 
     const r = await proposeAssessment(db, orgId, id, provider, AI_ACTOR);
     if (!r.ok || !r.output) {
       const rateLimited = /límite de uso|Ningún proveedor/i.test(r.error ?? "");
-      items.push({ prospectId: id, name: p.name, state: "error", priority: null, reason: r.error ?? "La IA no pudo analizarlo." });
-      if (rateLimited) stopped = "El proveedor de IA alcanzó su límite de uso: se detuvo el lote. Reintenta en unos minutos.";
+      if (rateLimited) {
+        // No es un fallo de este prospecto: se queda pendiente y se repite cuando el proveedor lo permita.
+        retryAfterSec = waitFromMessage(r.error) ?? undefined;
+        stopped = `El proveedor de IA alcanzó su límite de uso: se detuvo el lote.${retryAfterSec ? "" : " Reintenta en unos minutos."}`;
+        skip(id, p.name, stopped); remaining.push(id);
+      } else items.push({ prospectId: id, name: p.name, state: "error", priority: null, reason: r.error ?? "La IA no pudo analizarlo." });
       continue;
     }
     // Lo «desconocido» no se guarda (no suma ni resta), igual que en el formulario manual.
@@ -62,5 +71,5 @@ export async function analyzeAndSaveBatch(
     } catch (e) { items.push({ prospectId: id, name: p.name, state: "error", priority: null, reason: e instanceof Error ? e.message : "No se pudo guardar." }); }
   }
   return { items, saved, skipped: items.filter((x) => x.state === "skipped").length, failed: items.filter((x) => x.state === "error").length,
-    pending: items.filter((x) => x.state === "skipped" && /se continúa en la siguiente/.test(x.reason ?? "")).length, stopped };
+    pending: items.filter((x) => x.state === "skipped" && /se continúa en la siguiente/.test(x.reason ?? "")).length, stopped, retryAfterSec, remaining };
 }
