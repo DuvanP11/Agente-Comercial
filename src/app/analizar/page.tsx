@@ -7,6 +7,9 @@ import { prospectVisible, viewerOf } from "@/lib/services/scope";
 import { Icon } from "@/components/icons";
 import { ChartCard, Columns, Donut, SERIES } from "@/components/charts";
 import { HelpPanel, Insight } from "@/components/Insight";
+import { AnalyzeOneButton, BatchBar, SelectAllBox } from "./BatchBar";
+import { AI_ACTOR } from "@/lib/services/analysis-batch";
+import { aiReady } from "@/lib/ai/ready";
 import { priorityHistogram, PRIORITY_BANDS } from "@/lib/dashboard";
 import { priorityInsight } from "@/lib/dashboard-insights";
 import { CRITERION_HELP as WHAT, CRITERION_LABELS, DEFAULT_WEIGHTS, type CriterionKey } from "@/lib/scoring/score";
@@ -31,15 +34,18 @@ function ContactChips({ phone, email, web }: { phone: boolean; email: boolean; w
 
 function PriorityBadge({ s }: { s: StoredScore | null }) {
   if (!s) return <span className="badge">Sin valorar</span>;
-  if (s.priority === null) return <span className="badge badge-warn" title="Falta información para calcular una prioridad: no significa que sea un mal prospecto.">Falta información</span>;
+  const ia = s.assessedBy === AI_ACTOR && <span className="badge badge-warn ml-1" title="La valoró la IA y nadie la ha revisado. Ábrela con «Revisar» para confirmarla antes de calificar.">IA · sin revisar</span>;
+  if (s.priority === null) return <span className="inline-flex items-center"><span className="badge badge-warn" title="Falta información para calcular una prioridad: no significa que sea un mal prospecto.">Falta información</span>{ia}</span>;
   const color = s.priority >= 60 ? "var(--s3)" : s.priority >= 40 ? "var(--s2)" : "var(--s5)";
   return (
     <span className="inline-flex items-center gap-2" title={`Prioridad ${s.priority} de 100`}>
       <span className="inline-block h-2 w-20 overflow-hidden rounded-full" style={{ background: "var(--color-surface-2)" }}><span className="block h-2 rounded-full" style={{ width: `${s.priority}%`, background: color }} /></span>
-      <b>{s.priority}</b>
+      <b>{s.priority}</b>{ia}
     </span>
   );
 }
+
+export const maxDuration = 60; // cada llamada analiza hasta 5 prospectos con IA
 
 export default async function Analizar({ searchParams }: { searchParams: Promise<{ f?: string; c?: string; r?: string }> }) {
   const { f, c, r } = await searchParams;
@@ -81,7 +87,8 @@ export default async function Analizar({ searchParams }: { searchParams: Promise
 
       <HelpPanel title="Cómo funciona (qué se valora, qué significa la prioridad y cómo usarla)">
         <ol className="list-decimal space-y-1 pl-5">
-          <li>Entra a un prospecto con <b>Analizar</b>. Puedes pulsar <b>Proponer con IA</b> (carga una propuesta, no guarda nada) o llenar los criterios tú.</li>
+          <li><b>Para analizar a muchos a la vez:</b> usa la barra «Analizar con IA» (los elegidos con las casillas, todos los que se ven, o solo los que faltan por valorar), o el botón <b>✨ IA</b> de una fila para uno solo. La IA guarda su resultado como «IA (sin revisar)»: ordena por prioridad, pero para calificar a alguien una persona debe abrirlo con <b>Revisar</b> y guardar la valoración.</li>
+          <li>Para analizar uno a uno, entra a un prospecto con <b>Analizar</b>. Puedes pulsar <b>Proponer con IA</b> (carga una propuesta, no guarda nada) o llenar los criterios tú.</li>
           <li>Para cada criterio eliges la <b>naturaleza</b>: «Confirmado» (exige evidencia), «Inferencia», «Hipótesis» o «Desconocido». Lo desconocido <b>no suma ni resta</b>.</li>
           <li>Pulsa <b>Guardar valoración</b>: se calcula la prioridad. Si la prioridad existe, puedes marcarlo <b>Calificado</b> y llevarlo a una campaña desde Captar clientes.</li>
         </ol>
@@ -137,12 +144,15 @@ export default async function Analizar({ searchParams }: { searchParams: Promise
         {([["todos", "Todos", base.length], ["con", "Con contacto", withC], ["sin", "Sin contacto", base.length - withC]] as const).map(([k, l, n]) => <Link key={k} className="btn" style={pill(contact === k)} href={link(filter === "todos" ? undefined : filter, k)}>{l} ({n})</Link>)}
       </nav>
 
+      {rows.length > 0 && <BatchBar visibleIds={rows.map(({ p }) => p.id)} unratedIds={rows.filter(({ s }) => !s).map(({ p }) => p.id)} aiReady={aiReady()} />}
+
       <div className="card overflow-x-auto">
         {rows.length === 0 ? <p className="text-sm text-muted">{all.length === 0 ? "No hay prospectos por analizar. Ejecuta una búsqueda primero." : "No hay prospectos con este filtro."}</p> : (
           <table className="table">
-            <thead><tr><th>Empresa</th><th>Rubro</th><th>Contacto</th><th>Estado</th><th>Prioridad</th><th>Cobertura</th>{viewer.seesAll && <th>Responsable</th>}<th></th></tr></thead>
+            <thead><tr><th className="w-8"><SelectAllBox /></th><th>Empresa</th><th>Rubro</th><th>Contacto</th><th>Estado</th><th>Prioridad</th><th>Cobertura</th>{viewer.seesAll && <th>Responsable</th>}<th></th></tr></thead>
             <tbody>{rows.map(({ p, s }) => (
               <tr key={p.id}>
+                <td><input type="checkbox" data-analyze={p.id} aria-label={`Elegir ${p.name}`} /></td>
                 <td><Link className="font-semibold underline" href={`/prospectos/${p.id}`}>{p.name}</Link>{p.isDemo && <span className="badge badge-warn ml-2">Demo</span>}<div className="text-xs text-muted">{p.city}</div></td>
                 <td>{p.category ?? <span className="text-muted">—</span>}</td>
                 <td><ContactChips phone={!!p.phoneKey} email={!!p.emailKey} web={!!p.domainKey} /></td>
@@ -150,7 +160,7 @@ export default async function Analizar({ searchParams }: { searchParams: Promise
                 <td><PriorityBadge s={s} /></td>
                 <td>{s ? <span className="inline-flex items-center gap-2"><span className="inline-block h-2 w-16 overflow-hidden rounded-full" style={{ background: "var(--color-surface-2)" }}><span className="block h-2 rounded-full" style={{ width: `${Math.round(s.coverage * 100)}%`, background: "var(--s1)" }} /></span>{Math.round(s.coverage * 100)} %</span> : <span className="text-muted">—</span>}</td>
                 {viewer.seesAll && <td className="text-sm">{p.ownerId ? nameOf.get(p.ownerId) ?? "—" : <span className="badge badge-warn">Sin asignar</span>}</td>}
-                <td><Link className="btn" href={`/analizar/${p.id}`}>{s ? "Revisar" : "Analizar"}</Link></td>
+                <td className="whitespace-nowrap"><div className="flex items-center gap-2"><AnalyzeOneButton id={p.id} rated={!!s} aiReady={aiReady()} /><Link className="btn" href={`/analizar/${p.id}`}>{s ? "Revisar" : "Analizar"}</Link></div></td>
               </tr>
             ))}</tbody>
           </table>

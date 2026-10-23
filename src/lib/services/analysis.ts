@@ -48,6 +48,8 @@ export async function setQualification(db: Db, orgId: string, prospectId: string
   if (qualified) {
     const s = p.scoreJson as StoredScore | null;
     if (!s || s.priority === null) throw new Error("No hay información suficiente para calificar: completa la valoración de criterios.");
+    // La IA puede valorar en lote, pero calificar es decisión de una persona que revisó esa valoración.
+    if (s.assessedBy === "IA (sin revisar)") throw new Error("Esta valoración la hizo la IA y nadie la ha revisado: ábrela con «Revisar», ajústala si hace falta y guárdala antes de calificar.");
   }
   if (p.status === "contacted" || p.status === "archived") throw new Error(`El prospecto está ${p.status}; no se cambia su estado desde aquí.`);
   await db.update(prospects).set({ status: qualified ? "qualified" : "new" }).where(eq(prospects.id, prospectId));

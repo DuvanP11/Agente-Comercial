@@ -35,6 +35,7 @@ export default async function Analisis({ params }: { params: Promise<{ id: strin
         <p className="text-sm text-muted">{p.category} · {p.city} · <Link className="underline" href={`/prospectos/${p.id}`}>ver ficha y evidencias</Link></p>
       </header>
       {blocked && <p role="alert" className="card badge-warn">Este prospecto tiene un duplicado sin resolver ({p.status}). Resuélvelo en su ficha antes de calificarlo.</p>}
+      {s?.assessedBy === "IA (sin revisar)" && <p role="status" className="card badge-warn">Esta valoración la hizo la <b>IA</b> y nadie la ha revisado. Revisa cada criterio, ajusta lo que haga falta y pulsa <b>Guardar valoración</b>: al guardarla tú, queda a tu nombre y ya podrás calificar al prospecto.</p>}
       {s && (
         <section className="card text-sm" aria-label="Resultado">
           <p><b>Prioridad comercial: {s.priority ?? "información insuficiente"}</b> · cobertura {(s.coverage * 100).toFixed(0)} % · respaldo en evidencia {(s.evidenceBacked * 100).toFixed(0)} %</p>
